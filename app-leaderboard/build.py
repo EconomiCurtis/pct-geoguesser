@@ -1,0 +1,384 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# build.py  —  PCT GeoGuesser  (leaderboard pages)
+#
+# Generates two self-contained leaderboard pages:
+#   app-leaderboard/index.html          → deployed at /leaderboard/
+#   app-leaderboard/all-time/index.html → deployed at /leaderboard/all-time/
+#
+# To rebuild:
+#   python3 app-leaderboard/build.py
+#
+# To deploy:
+#   cp app-leaderboard/index.html           deploy/leaderboard/index.html
+#   cp app-leaderboard/all-time/index.html  deploy/leaderboard/all-time/index.html
+#   npx wrangler pages deploy deploy/ --project-name=pct-geoguesser
+# ──────────────────────────────────────────────────────────────────────────────
+
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'misc'))
+from supabase_config import SUPABASE_URL, SUPABASE_ANON_KEY
+
+HERE     = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = HERE
+MISC_BASE_URL = "https://pct-geoguesser.pages.dev/misc"
+
+
+def make_html(mode):   # mode = 'rolling' | 'all-time'
+    rolling     = (mode == 'rolling')
+    page_title  = "PCT GeoGuesser — 90-Day Leaderboard" if rolling else "PCT GeoGuesser — All-Time Leaderboard"
+    h1_text     = "90-Day Leaderboard"                  if rolling else "All-Time Leaderboard"
+    other_href  = "/leaderboard/all-time/"              if rolling else "/leaderboard/"
+    other_label = "All-Time"                            if rolling else "90-Day"
+    active_tab  = "rolling"                             if rolling else "alltime"
+
+    date_filter_js = """
+    const ago90 = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+    query = query.gte('played_at', ago90);""" if rolling else ""
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>{page_title}</title>
+<meta name="description" content="PCT GeoGuesser leaderboard — see the top scores on the Pacific Crest Trail guessing game.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" href="{MISC_BASE_URL}/pct-geoguesser-favicon.png">
+<link rel="apple-touch-icon" href="{MISC_BASE_URL}/pct-geoguesser-favicon.png">
+<meta name="theme-color" content="#0d1117">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+*, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+
+:root {{
+  --bg:        #0d1117;
+  --surface:   #161b22;
+  --surface2:  #21262d;
+  --border:    #30363d;
+  --text:      #f0f6fc;
+  --muted:     #8b949e;
+  --pct-green: #1D502E;
+  --pct-teal:  #008080;
+  --pct-white: #FFFFFF;
+}}
+
+body {{
+  font-family: 'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100dvh;
+}}
+
+/* ── Top nav ─────────────────────────────────────────────── */
+.top-nav {{
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  max-width: 760px;
+  margin: 0 auto;
+  width: 100%;
+}}
+.back-link {{
+  color: var(--pct-teal);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+}}
+.back-link:hover {{ text-decoration: underline; }}
+
+/* ── Page wrapper ────────────────────────────────────────── */
+.page {{
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 16px 48px;
+}}
+
+/* ── Heading ─────────────────────────────────────────────── */
+.page-header {{
+  padding: 28px 0 16px;
+  text-align: center;
+}}
+.page-header h1 {{
+  font-size: clamp(22px, 5vw, 36px);
+  font-weight: 800;
+  color: var(--pct-white);
+}}
+
+/* ── Tab bar ─────────────────────────────────────────────── */
+.tab-bar {{
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}}
+.tab {{
+  flex: 1;
+  padding: 10px 16px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  color: var(--muted);
+  background: var(--surface);
+  transition: background .15s, color .15s;
+}}
+.tab:hover:not(.tab-active) {{ background: var(--surface2); color: var(--text); }}
+.tab-active {{
+  background: var(--pct-green);
+  color: var(--pct-white);
+  cursor: default;
+  pointer-events: none;
+}}
+
+/* ── State messages ──────────────────────────────────────── */
+.state-msg {{
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--muted);
+  font-size: 15px;
+}}
+.state-msg .spinner {{
+  display: inline-block;
+  width: 28px; height: 28px;
+  border: 3px solid var(--border);
+  border-top-color: var(--pct-teal);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+  margin-bottom: 16px;
+}}
+@keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+
+/* ── Leaderboard table ───────────────────────────────────── */
+.lb-table {{
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}}
+.lb-table th {{
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}}
+.lb-table td {{
+  padding: 12px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}}
+.lb-table tr:last-child td {{ border-bottom: none; }}
+.lb-table tbody tr:hover {{ background: var(--surface2); }}
+
+.rank-cell {{
+  font-size: 16px;
+  text-align: center;
+  width: 44px;
+  color: var(--muted);
+  font-weight: 700;
+}}
+.rank-medal {{ font-size: 20px; }}
+
+.name-cell {{ min-width: 140px; }}
+.hiker-link {{
+  color: var(--pct-teal);
+  font-weight: 700;
+  text-decoration: none;
+  font-size: 15px;
+}}
+.hiker-link:hover {{ text-decoration: underline; color: #5fd4d4; }}
+.pct-year {{
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}}
+
+.score-cell {{
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}}
+.perf-cell {{
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}}
+/* Highlight if all 10 perfect */
+.perf-cell.all-perfect {{
+  color: var(--pct-teal);
+  font-weight: 700;
+}}
+
+/* ── 90-day note ─────────────────────────────────────────── */
+.window-note {{
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 20px;
+}}
+
+/* ── Desktop ─────────────────────────────────────────────── */
+@media (min-width: 600px) {{
+  .lb-table {{ font-size: 15px; }}
+  .lb-table th {{ font-size: 12px; padding: 10px 16px; }}
+  .lb-table td {{ padding: 14px 16px; }}
+  .hiker-link {{ font-size: 16px; }}
+}}
+</style>
+</head>
+<body>
+
+<nav style="border-bottom:1px solid var(--border)">
+  <div class="top-nav">
+    <a href="/" class="back-link">← PCT GeoGuesser</a>
+  </div>
+</nav>
+
+<div class="page">
+
+  <div class="page-header">
+    <h1>{h1_text}</h1>
+  </div>
+
+  <!-- Tab bar -->
+  <div class="tab-bar">
+    <a href="/leaderboard/"          class="tab {'tab-active' if rolling else ''}">90-Day</a>
+    <a href="/leaderboard/all-time/" class="tab {'tab-active' if not rolling else ''}">All-Time</a>
+  </div>
+
+  <!-- Loading -->
+  <div id="state-loading" class="state-msg">
+    <div class="spinner"></div><br>Loading scores…
+  </div>
+
+  <!-- Empty -->
+  <div id="state-empty" class="state-msg" hidden>
+    No scores yet — be the first!
+  </div>
+
+  <!-- Error -->
+  <div id="state-error" class="state-msg" hidden>
+    <span id="error-msg">Something went wrong.</span>
+  </div>
+
+  <!-- Table -->
+  <table id="lb-table" class="lb-table" hidden>
+    <thead>
+      <tr>
+        <th style="text-align:center">#</th>
+        <th>Trail Name</th>
+        <th>Best Score</th>
+        <th>Perfects</th>
+      </tr>
+    </thead>
+    <tbody id="lb-body"></tbody>
+  </table>
+
+  {'<p class="window-note">Best score per player in the last 90 days</p>' if rolling else '<p class="window-note">Best score per player, all time</p>'}
+
+</div>
+
+<script>
+const sb = supabase.createClient('{SUPABASE_URL}', '{SUPABASE_ANON_KEY}');
+
+const MEDALS = ['🥇','🥈','🥉'];
+
+function showState(id) {{
+  ['state-loading','state-empty','state-error','lb-table']
+    .forEach(s => document.getElementById(s).hidden = (s !== id));
+}}
+
+async function load() {{
+  try {{
+    let query = sb
+      .from('game_sessions')
+      .select('user_id, total_score, perfect_count, photo_count, played_at, profiles(id, trail_name, pct_year)')
+      .order('total_score', {{ ascending: true }})
+      .limit(500);
+
+    {date_filter_js}
+
+    const {{ data, error }} = await query;
+    if (error) throw error;
+
+    // Keep best score per user (already sorted ASC, so first hit = best)
+    const seen = new Set();
+    const rows = [];
+    for (const row of (data ?? [])) {{
+      if (row.profiles && !seen.has(row.user_id)) {{
+        seen.add(row.user_id);
+        rows.push(row);
+        if (rows.length >= 100) break;
+      }}
+    }}
+
+    if (rows.length === 0) {{ showState('state-empty'); return; }}
+
+    const tbody = document.getElementById('lb-body');
+    rows.forEach((row, i) => {{
+      const rank     = i + 1;
+      const profileId = row.profiles.id;
+      const name     = row.profiles.trail_name || 'Anonymous';
+      const pctYear  = row.profiles.pct_year   || '';
+      const score    = row.total_score.toFixed(1);
+      const perfects = row.perfect_count ?? 0;
+      const total    = row.photo_count   ?? 10;
+      const allPerf  = perfects === total;
+
+      const rankHtml = rank <= 3
+        ? `<span class="rank-medal">${{MEDALS[rank-1]}}</span>`
+        : `${{rank}}`;
+
+      const yearHtml = pctYear
+        ? `<span class="pct-year">PCT ${{pctYear}}</span>`
+        : '';
+
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="rank-cell">${{rankHtml}}</td>
+        <td class="name-cell">
+          <a href="/hiker/?id=${{profileId}}" class="hiker-link">${{name}}</a>
+          ${{yearHtml}}
+        </td>
+        <td class="score-cell">${{score}} mi</td>
+        <td class="perf-cell${{allPerf ? ' all-perfect' : ''}}">${{perfects}}/${{total}}</td>
+      `;
+      tbody.appendChild(tr);
+    }});
+
+    showState('lb-table');
+
+  }} catch (err) {{
+    document.getElementById('error-msg').textContent = err.message || 'Failed to load leaderboard.';
+    showState('state-error');
+  }}
+}}
+
+load();
+</script>
+</body>
+</html>"""
+
+
+# ── Write both files ───────────────────────────────────────────────────────
+
+rolling_html  = make_html('rolling')
+alltime_html  = make_html('all-time')
+
+out_rolling  = f"{BASE_DIR}/index.html"
+out_alltime  = f"{BASE_DIR}/all-time/index.html"
+
+with open(out_rolling,  "w") as f: f.write(rolling_html)
+with open(out_alltime,  "w") as f: f.write(alltime_html)
+
+print(f"Built {out_rolling}")
+print(f"Built {out_alltime}")

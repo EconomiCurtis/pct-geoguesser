@@ -1,0 +1,41 @@
+# ── Misc local files ──────────────────────────────────────────────────────────
+.Rhistory
+
+# ── macOS metadata ────────────────────────────────────────────────────────────
+.DS_Store
+**/.DS_Store
+._*
+**/._*
+
+# ── Wrangler CLI cache ────────────────────────────────────────────────────────
+.wrangler/
+
+# ── All deploy artifacts ──────────────────────────────────────────────────────
+# Photos (834 MB), logos, and generated HTML — all served via Cloudflare Pages.
+# Deploy separately with: npx wrangler pages deploy deploy/ --project-name=pct-geoguesser
+deploy/
+
+# ── Large photo archives ──────────────────────────────────────────────────────
+raw-photos-save/
+img/
+
+# ── Sensitive / spoiler-y data ────────────────────────────────────────────────
+# photos.csv maps random photo IDs → real trail miles (answers cheat sheet)
+misc/photos.csv
+
+# supabase_config.py holds the publishable anon key — safe to expose but
+# conventional to gitignore. Copy misc/supabase_config.template.py to get started.
+misc/supabase_config.py
+
+# ── Local-only tools ──────────────────────────────────────────────────────────
+app-explore/
+
+# ── Generated HTML build artifacts ───────────────────────────────────────────
+# Regenerated locally by each app-*/build.py, then deployed via wrangler.
+app-landing/index.html
+app-game-v1-testing/index.html
+app-game-v2/index.html
+app-leaderboard/index.html
+app-leaderboard/all-time/
+app-hiker/index.html
+app-admin/index.html

@@ -15,13 +15,17 @@ Hosted on Cloudflare Pages. Backend: Supabase (PostgreSQL + Google OAuth).
 
 ## Up Next
 
-- [ ] Reduce v1-demo photo pool to ~40 (edit photos.csv: change ~62 rows from `v1-demo` → `v2-scored`)
-- [ ] Tag green-tunnel photos in photos.csv (dense forest, no visible landmarks)
-- [ ] Commit and push to GitHub — write your own commit message!
+
 
 ---
 
 ## Recently Completed — Launch + Post-Launch Fixes (2026-05-29)
+
+### ✅ Photos update
+- [X] Add more photos for Washington and Oregon
+- [X] Reduce v1-demo photo pool to ~40 (edit photos.csv: change ~62 rows from `v1-demo` → `v2-scored`)
+- [X] Tag green-tunnel photos in photos.csv (dense forest, no visible landmarks), limit number of these in each game to <=2. 
+
 
 ### ✅ Deployed to production
 - [x] Wiped Supabase game_sessions (old scores used miles-off system, incompatible with new pts)

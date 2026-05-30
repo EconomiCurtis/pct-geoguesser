@@ -96,7 +96,7 @@ Tagline, logo, and "About PCT GeoGuesser" footer link (page TBD).
 
 ### `/practice/` — Practice game (v1)
 No login required. 10 photos per game — Mile 1 is always first (easy opener),
-remaining 9 drawn randomly across all 5 PCT sections. 30-second timer per photo.
+remaining 9 drawn randomly across all 5 PCT sections. 45-second timer per photo.
 Slider to guess, score shown per round and in a final summary table. No data saved.
 
 ### `/game/` — Scored game (v2)

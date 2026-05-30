@@ -1,46 +1,36 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# build.py  —  PCT GeoGuesser  (leaderboard pages)
+# build.py  —  PCT GeoGuesser  (leaderboard)
 #
-# Generates two self-contained leaderboard pages:
-#   app-leaderboard/index.html          → deployed at /leaderboard/
-#   app-leaderboard/all-time/index.html → deployed at /leaderboard/all-time/
+# Generates a single leaderboard page:
+#   app-leaderboard/index.html  →  deployed at /leaderboard/
+#
+# Default view: All-Time (highest score per player, ever).
+# 90-Day tab: shown only when the admin enables it via Site Settings.
+#   The page fetches `site_settings` where key='show_rolling_leaderboard' on
+#   load. If value='true', a 90-Day tab appears alongside All-Time. Otherwise
+#   only All-Time is shown, with no tab bar.
 #
 # To rebuild:
 #   python3 app-leaderboard/build.py
 #
 # To deploy:
-#   cp app-leaderboard/index.html           deploy/leaderboard/index.html
-#   cp app-leaderboard/all-time/index.html  deploy/leaderboard/all-time/index.html
-#   npx wrangler pages deploy deploy/ --project-name=pct-geoguesser
+#   bash build.sh
 # ──────────────────────────────────────────────────────────────────────────────
 
-import sys, os
+import os
+sys = __import__('sys')
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'misc'))
 from supabase_config import SUPABASE_URL, SUPABASE_ANON_KEY
 
-HERE     = os.path.dirname(os.path.abspath(__file__))
-BASE_DIR = HERE
+HERE         = os.path.dirname(os.path.abspath(__file__))
 MISC_BASE_URL = "https://pct-geoguesser.pages.dev/misc"
 
-
-def make_html(mode):   # mode = 'rolling' | 'all-time'
-    rolling     = (mode == 'rolling')
-    page_title  = "PCT GeoGuesser — 90-Day Leaderboard" if rolling else "PCT GeoGuesser — All-Time Leaderboard"
-    h1_text     = "90-Day Leaderboard"                  if rolling else "All-Time Leaderboard"
-    other_href  = "/leaderboard/all-time/"              if rolling else "/leaderboard/"
-    other_label = "All-Time"                            if rolling else "90-Day"
-    active_tab  = "rolling"                             if rolling else "alltime"
-
-    date_filter_js = """
-    const ago90 = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-    query = query.gte('played_at', ago90);""" if rolling else ""
-
-    return f"""<!DOCTYPE html>
+html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>{page_title}</title>
+<title>PCT GeoGuesser — Leaderboard</title>
 <meta name="description" content="PCT GeoGuesser leaderboard — see the top scores on the Pacific Crest Trail guessing game.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -71,7 +61,6 @@ body {{
   min-height: 100dvh;
 }}
 
-/* ── Top nav ─────────────────────────────────────────────── */
 .top-nav {{
   padding: 14px 20px;
   border-bottom: 1px solid var(--border);
@@ -91,14 +80,12 @@ body {{
 }}
 .back-link:hover {{ text-decoration: underline; }}
 
-/* ── Page wrapper ────────────────────────────────────────── */
 .page {{
   max-width: 760px;
   margin: 0 auto;
   padding: 0 16px 48px;
 }}
 
-/* ── Heading ─────────────────────────────────────────────── */
 .page-header {{
   padding: 28px 0 16px;
   text-align: center;
@@ -109,7 +96,7 @@ body {{
   color: var(--pct-white);
 }}
 
-/* ── Tab bar ─────────────────────────────────────────────── */
+/* Tab bar — hidden by default, shown only when 90-day is enabled */
 .tab-bar {{
   display: flex;
   border: 1px solid var(--border);
@@ -123,20 +110,19 @@ body {{
   text-align: center;
   font-size: 14px;
   font-weight: 700;
-  text-decoration: none;
+  cursor: pointer;
   color: var(--muted);
   background: var(--surface);
+  border: none;
   transition: background .15s, color .15s;
 }}
 .tab:hover:not(.tab-active) {{ background: var(--surface2); color: var(--text); }}
-.tab-active {{
+.tab.tab-active {{
   background: var(--pct-green);
   color: var(--pct-white);
   cursor: default;
-  pointer-events: none;
 }}
 
-/* ── State messages ──────────────────────────────────────── */
 .state-msg {{
   text-align: center;
   padding: 60px 20px;
@@ -154,7 +140,6 @@ body {{
 }}
 @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
 
-/* ── Leaderboard table ───────────────────────────────────── */
 .lb-table {{
   width: 100%;
   border-collapse: collapse;
@@ -185,7 +170,6 @@ body {{
   font-weight: 700;
 }}
 .rank-medal {{ font-size: 20px; }}
-
 .name-cell {{ min-width: 140px; }}
 .hiker-link {{
   color: var(--pct-teal);
@@ -200,7 +184,6 @@ body {{
   color: var(--muted);
   margin-top: 2px;
 }}
-
 .score-cell {{
   font-size: 15px;
   font-weight: 700;
@@ -212,13 +195,10 @@ body {{
   font-size: 13px;
   white-space: nowrap;
 }}
-/* Highlight if all 10 perfect */
 .perf-cell.all-perfect {{
   color: var(--pct-teal);
   font-weight: 700;
 }}
-
-/* ── Table descriptor (shown above the table) ───────────── */
 .window-note {{
   text-align: center;
   font-size: 12px;
@@ -226,7 +206,6 @@ body {{
   margin-bottom: 16px;
 }}
 
-/* ── Desktop ─────────────────────────────────────────────── */
 @media (min-width: 600px) {{
   .lb-table {{ font-size: 15px; }}
   .lb-table th {{ font-size: 12px; padding: 10px 16px; }}
@@ -244,35 +223,26 @@ body {{
 </nav>
 
 <div class="page">
-
   <div class="page-header">
-    <h1>{h1_text}</h1>
+    <h1 id="lb-title">Leaderboard</h1>
   </div>
 
-  <!-- Tab bar -->
-  <div class="tab-bar">
-    <a href="/leaderboard/"          class="tab {'tab-active' if rolling else ''}">90-Day</a>
-    <a href="/leaderboard/all-time/" class="tab {'tab-active' if not rolling else ''}">All-Time</a>
+  <!-- Tab bar: hidden until 90-day setting is confirmed enabled -->
+  <div class="tab-bar" id="tab-bar" style="display:none">
+    <button class="tab" id="tab-alltime" onclick="switchView('alltime')">All-Time</button>
+    <button class="tab" id="tab-rolling" onclick="switchView('rolling')">90-Day</button>
   </div>
 
-  {'<p class="window-note">Highest score per player in the last 90 days · max 2655.8 pts</p>' if rolling else '<p class="window-note">Highest score per player, all time · max 2655.8 pts</p>'}
+  <p class="window-note" id="window-note"></p>
 
-  <!-- Loading -->
   <div id="state-loading" class="state-msg">
     <div class="spinner"></div><br>Loading scores…
   </div>
-
-  <!-- Empty -->
-  <div id="state-empty" class="state-msg" hidden>
-    No scores yet — be the first!
-  </div>
-
-  <!-- Error -->
+  <div id="state-empty" class="state-msg" hidden>No scores yet — be the first!</div>
   <div id="state-error" class="state-msg" hidden>
     <span id="error-msg">Something went wrong.</span>
   </div>
 
-  <!-- Table -->
   <table id="lb-table" class="lb-table" hidden>
     <thead>
       <tr>
@@ -284,20 +254,30 @@ body {{
     </thead>
     <tbody id="lb-body"></tbody>
   </table>
-
 </div>
 
 <script>
 const sb = supabase.createClient('{SUPABASE_URL}', '{SUPABASE_ANON_KEY}');
-
 const MEDALS = ['🥇','🥈','🥉'];
+
+// Current view: 'alltime' (default) or 'rolling'
+let currentView = 'alltime';
+let rollingEnabled = false;
 
 function showState(id) {{
   ['state-loading','state-empty','state-error','lb-table']
     .forEach(s => document.getElementById(s).hidden = (s !== id));
 }}
 
-async function load() {{
+function switchView(view) {{
+  currentView = view;
+  document.getElementById('tab-alltime').classList.toggle('tab-active', view === 'alltime');
+  document.getElementById('tab-rolling').classList.toggle('tab-active', view === 'rolling');
+  loadScores();
+}}
+
+async function loadScores() {{
+  showState('state-loading');
   try {{
     let query = sb
       .from('game_sessions')
@@ -305,12 +285,15 @@ async function load() {{
       .order('total_score', {{ ascending: false }})
       .limit(500);
 
-    {date_filter_js}
+    if (currentView === 'rolling') {{
+      const ago90 = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+      query = query.gte('played_at', ago90);
+    }}
 
     const {{ data, error }} = await query;
     if (error) throw error;
 
-    // Keep best score per user (already sorted DESC, so first hit = best)
+    // Keep only the best score per user (already sorted DESC, first hit = best)
     const seen = new Set();
     const rows = [];
     for (const row of (data ?? [])) {{
@@ -323,21 +306,25 @@ async function load() {{
 
     if (rows.length === 0) {{ showState('state-empty'); return; }}
 
+    document.getElementById('window-note').textContent = currentView === 'rolling'
+      ? 'Highest score per player in the last 90 days · max 2655.8 pts'
+      : 'Highest score per player, all time · max 2655.8 pts';
+
     const tbody = document.getElementById('lb-body');
+    tbody.innerHTML = '';
     rows.forEach((row, i) => {{
-      const rank     = i + 1;
+      const rank      = i + 1;
       const profileId = row.profiles.id;
-      const name     = row.profiles.trail_name || 'Anonymous';
-      const pctYear  = row.profiles.pct_year   || '';
-      const score    = row.total_score.toFixed(1);
-      const perfects = row.perfect_count ?? 0;
-      const total    = row.photo_count   ?? 10;
-      const allPerf  = perfects === total;
+      const name      = row.profiles.trail_name || 'Anonymous';
+      const pctYear   = row.profiles.pct_year   || '';
+      const score     = Number(row.total_score).toFixed(1);
+      const perfects  = row.perfect_count ?? 0;
+      const total     = row.photo_count   ?? 10;
+      const allPerf   = perfects === total;
 
       const rankHtml = rank <= 3
         ? `<span class="rank-medal">${{MEDALS[rank-1]}}</span>`
         : `${{rank}}`;
-
       const yearHtml = pctYear
         ? `<span class="pct-year">PCT ${{pctYear}}</span>`
         : '';
@@ -356,29 +343,43 @@ async function load() {{
     }});
 
     showState('lb-table');
-
   }} catch (err) {{
     document.getElementById('error-msg').textContent = err.message || 'Failed to load leaderboard.';
     showState('state-error');
   }}
 }}
 
-load();
+async function init() {{
+  // Check admin setting: show_rolling_leaderboard
+  try {{
+    const {{ data }} = await sb
+      .from('site_settings')
+      .select('value')
+      .eq('key', 'show_rolling_leaderboard')
+      .maybeSingle();
+    rollingEnabled = data?.value === 'true';
+  }} catch (_) {{
+    rollingEnabled = false;
+  }}
+
+  if (rollingEnabled) {{
+    document.getElementById('tab-bar').style.display = '';
+    document.getElementById('lb-title').textContent = 'All-Time Leaderboard';
+    document.getElementById('tab-alltime').classList.add('tab-active');
+  }} else {{
+    document.getElementById('lb-title').textContent = 'Leaderboard';
+  }}
+
+  currentView = 'alltime';
+  loadScores();
+}}
+
+init();
 </script>
 </body>
 </html>"""
 
-
-# ── Write both files ───────────────────────────────────────────────────────
-
-rolling_html  = make_html('rolling')
-alltime_html  = make_html('all-time')
-
-out_rolling  = f"{BASE_DIR}/index.html"
-out_alltime  = f"{BASE_DIR}/all-time/index.html"
-
-with open(out_rolling,  "w") as f: f.write(rolling_html)
-with open(out_alltime,  "w") as f: f.write(alltime_html)
-
-print(f"Built {out_rolling}")
-print(f"Built {out_alltime}")
+out = os.path.join(HERE, 'index.html')
+with open(out, 'w') as f:
+    f.write(html)
+print(f"Built {out}")

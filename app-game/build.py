@@ -11,6 +11,140 @@
 # To deploy:
 #   bash build.sh
 #   npx wrangler pages deploy deploy/ --project-name=pct-geoguesser
+#
+# ── How the build works ───────────────────────────────────────────────────────
+# make_html(mode) is called twice — once for 'practice', once for 'scored'.
+# It returns a complete self-contained index.html as a Python f-string.
+# The photos from photos.csv are baked in as an inline JSON array (no API call
+# at runtime). Scored-only features (auth, score submission, rank display) are
+# conditionally included via Python variables that inject empty strings in
+# practice mode.
+#
+# f-string escaping rule:
+#   This file is one giant return f"""...""". ALL CSS/JS braces must be doubled:
+#     {{ }} → { } in output      (CSS rules, JS blocks)
+#     ${{var}} → ${var} in output (JS template literals)
+#   The exception: helper strings like js_photo_selection are regular strings
+#   (not f-strings) — use literal { } there.
+#
+# ── Screen flow ───────────────────────────────────────────────────────────────
+# Practice:
+#   screen-loading → screen-start → screen-guess → screen-result
+#                                                 ↓ (after last photo)
+#                                          screen-end
+#
+# Scored:
+#   screen-loading → screen-auth → (Google OAuth redirect) → screen-loading
+#                                → screen-signup (first login) → screen-start
+#                                → screen-start (returning user)
+#                  → screen-guess → screen-result → ... → screen-end
+#                                                          (score submitted)
+#
+# ── Key JS functions (in the generated HTML) ─────────────────────────────────
+#
+# Photo data & selection
+#   photos           — inline JSON array baked in at build time; each entry has
+#                      id, mile, direction, section, date, url, photo_by, tags
+#   selectGamePhotos() — picks the 10 photos for the current game (see below)
+#   prepareNextGame()  — calls selectGamePhotos() and kicks off background
+#                        preloads for all 10 images immediately
+#   preloadImage(url)  — returns a Promise that resolves when the image is
+#                        loaded (cached; safe to call multiple times)
+#
+# Photo selection rules
+#   Practice: first photo is always tdlce (Mile 0 SoBo opener); then 1 from
+#             SoCal + 2 each from Sierra/NorCal/Oregon/Washington (9 more).
+#             Picks within a section are ≥20 miles apart. Max 2 green-tunnel.
+#   Scored:   2 from each of the 5 PCT sections = 10 total.
+#             Same ≥20 miles apart + max 2 green-tunnel constraints.
+#   green-tunnel: photos tagged 'green-tunnel' in photos.csv are capped at 2
+#                 per game (dense forest, hard to ID). _isGT(p) checks the tag.
+#                 Fallback logic relaxes the cap if a section has no other photos.
+#
+# Game flow
+#   startGame()       — resets state (scores/guesses/perfects arrays), calls
+#                        showGuessScreen() for photo 0
+#   showGuessScreen() — sets up UI for current photo, blocks on image load,
+#                        then shows the screen and starts the timer
+#   submitGuess()     — called by Submit button; stops timer, calls processGuess()
+#   processGuess()    — computes score + perfect flag, pushes to state arrays,
+#                        calls showResultScreen()
+#   nextPhoto()       — increments currentIdx; calls showGuessScreen() or
+#                        showEndScreen() if it was the last photo
+#
+# Scoring  (calcScore / isPerfect)
+#   Formula: S = (MAX_TOTAL / GAME_SIZE) × e^(−10 × d_eff / MAX_TOTAL)
+#   d_eff = max(0, |guess − trueMile| − FULL_CREDIT)
+#   FULL_CREDIT = 3 miles  → guesses within ±3 mi earn full credit (perfect)
+#   MAX_TOTAL   = 2655.8   → PCT length in miles = max possible total score
+#   GAME_SIZE   = 10       → PER_PHOTO = 265.58 pts
+#   Timeout     → score = 0, perfect = false
+#
+# Timer
+#   TIMER_SEC = 45         → seconds per photo
+#   startTimer()           → sets timeLeft = TIMER_SEC, starts a 1-second
+#                             setInterval; calls renderTimer() each tick
+#   renderTimer()          → updates the red progress bar width and numeric
+#                             countdown display
+#   stopTimer()            → clears the interval handle
+#   On timeout: if the input has a value, that value is submitted as a guess;
+#               otherwise the round is marked timed-out (score = 0)
+#
+# Result screen  (showResultScreen)
+#   Shows: your guess vs correct mile, verdict (Spot On / N miles North|South /
+#   Timed out), round score, running total, the photo again (pinch-to-zoom),
+#   meta chips (mile, section, date, direction), photo_by credit if present.
+#
+# End / review screen  (showEndScreen)
+#   Shows: final score, average miles off, submit card (scored only),
+#   a recap table (thumbnail → lightbox, correct mile, your guess, score).
+#   Scored: calls submitGameScore() first (before prepareNextGame() overwrites
+#   gamePhotos), then prepareNextGame() runs in background while user reads.
+#
+# Lightbox  (openLightbox / closeLightbox)
+#   Full-screen overlay triggered by clicking thumbnails in the end-table.
+#   Caption uses a '|' separator: meta|credit → rendered as two lines.
+#   Close by clicking ✕ button or clicking outside the image.
+#
+# Slider thumb  (updateThumbColors)
+#   The trail slider thumb shows a tri-colour gradient matching the current
+#   PCT section colour. CSS custom properties --thumb-left/center/right are
+#   set by JS via lerp between adjacent section colours.
+#
+# Pinch-to-zoom + pan  (makePinchZoom)
+#   Applied to both the guess-screen photo and the result-screen photo.
+#   Uses touch events; scale clamped 1–6×, pan clamped to keep image visible.
+#   resetPhotoZoom / resetResultZoom registered on window for cross-function use.
+#
+# Google Auth  (scored only — js_supabase block)
+#   signInWithGoogle()    → sb.auth.signInWithOAuth({ provider: 'google' })
+#                           Redirect back to /game/ after OAuth.
+#   onAuthStateChange()   → fires on load (INITIAL_SESSION) and on sign-out.
+#                           INITIAL_SESSION: if session exists, loadProfile();
+#                           else show auth screen.
+#   signOut()             → sb.auth.signOut()
+#
+# User profiles  (scored only)
+#   loadProfile()         → fetches profiles row for currentUser.id.
+#                           If found, shows start screen. If not, shows signup.
+#   saveProfile()         → upserts profiles row (trail_name, pct_year, about).
+#                           Used for both first-time signup and profile edits.
+#   showEditProfile()     → pre-fills signup form with current profile, shows
+#                           signup screen in edit mode.
+#   cancelEditProfile()   → returns to start screen without saving.
+#
+# Score submission  (scored only — js_submit block)
+#   submitGameScore()     → builds guessPayload array from gamePhotos/guesses/
+#                           scores arrays, calls sb.rpc('submit_game', {...}).
+#                           On success, queries game_sessions to compute the
+#                           player's 90-day rank and displays it.
+#                           Test account (admin email) skips the DB write.
+#
+# Database communication
+#   All DB calls use the Supabase JS client (sb = createClient(url, anonKey)).
+#   The anon key is safe to embed — RLS restricts what it can do.
+#   Writes go through the submit_game() SECURITY DEFINER RPC (bypasses RLS).
+#   Reads (leaderboard rank, profile) use .from().select() with RLS policies.
 # ──────────────────────────────────────────────────────────────────────────────
 
 import csv, json, os, sys
@@ -1203,6 +1337,16 @@ h1 span {{ color: var(--pct-teal); }}
   <div class="lightbox-caption" id="lb-caption"></div>
 </div>
 
+<!-- ════════════════ NAVIGATION INTERRUPT MODAL ════════════════ -->
+<div id="nav-interrupt-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:200;align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:30px 28px 24px;max-width:360px;width:100%;text-align:center;display:flex;flex-direction:column;align-items:center;gap:16px;box-shadow:0 24px 72px rgba(0,0,0,.75)">
+    <div style="font-size:36px">⚠️</div>
+    <div style="font-size:19px;font-weight:800;color:var(--text)">Game Interrupted</div>
+    <div style="font-size:14px;color:var(--muted);line-height:1.6">Navigating away during a game resets your progress.<br>Your current game has been cleared.</div>
+    <button id="nav-interrupt-ok" style="background:var(--pct-green);color:#fff;border:none;border-radius:10px;padding:12px 32px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;transition:filter .15s" onmouseover="this.style.filter='brightness(1.25)'" onmouseout="this.style.filter=''">OK</button>
+  </div>
+</div>
+
 <script>
 const photos = {game_data};
 {js_supabase}
@@ -1627,6 +1771,46 @@ document.addEventListener('touchmove', e => {{
     }}
   }}
 }}, {{ passive: false }});
+
+// ── Back-navigation guard ─────────────────────────────────
+// When the user hits the browser back button mid-game, the page is frozen
+// in bfcache. On returning (forward button or history.back), pageshow fires
+// with e.persisted = true. We detect this, reset all game state, return to
+// the start screen, and show a modal. history.replaceState() flushes the
+// bfcache entry so any subsequent forward navigation does a clean reload
+// (not another bfcache restore that would re-enter the game).
+
+function _gameIsActive() {{
+  return document.getElementById('screen-guess').classList.contains('active')
+      || document.getElementById('screen-result').classList.contains('active');
+}}
+
+window.addEventListener('pageshow', function(e) {{
+  if (!e.persisted || !_gameIsActive()) return;
+
+  // Stop any running timer immediately
+  stopTimer();
+
+  // Wipe game state — scores/guesses/perfects are now stale
+  currentIdx = 0; scores = []; guesses = []; perfects = [];
+
+  // Pre-select a fresh set of photos in the background
+  prepareNextGame();
+
+  // Return to the start screen (practice or scored — both have screen-start)
+  showScreen('screen-start');
+
+  // Show the interruption modal
+  document.getElementById('nav-interrupt-modal').style.display = 'flex';
+
+  // Flush the bfcache entry for this page. Without this, clicking forward
+  // after dismissing the modal would restore the page to the mid-game state.
+  history.replaceState(null, '', window.location.href);
+}});
+
+document.getElementById('nav-interrupt-ok').addEventListener('click', function() {{
+  document.getElementById('nav-interrupt-modal').style.display = 'none';
+}});
 {js_kickoff}
 </script>
 </body>

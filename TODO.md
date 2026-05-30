@@ -19,6 +19,51 @@ Hosted on Cloudflare Pages. Backend: Supabase (PostgreSQL + Google OAuth).
 - More photos / photo reassignment before launch
 - Social links on hiker profile page (requires new `social_links` columns in profiles)
 
+---
+
+## Recently Completed — Polish + Anti-Cheat (2026-05-30)
+
+### ✅ Back-navigation anti-cheat guard
+Hitting the browser back button during an active game (guess or result screen)
+then clicking forward used to restore the page from bfcache with the timer paused —
+giving players unlimited time to look up the answer.
+Fix: `pageshow` listener detects bfcache restores (`e.persisted = true`) during an
+active game. Stops the timer, wipes game state, returns to the start screen, and
+shows a "Game Interrupted" modal. `history.replaceState()` flushes the bfcache entry
+so subsequent forward navigation does a clean reload instead of another restore.
+Applies to both practice and scored modes.
+
+### ✅ Leaderboard consolidated to single URL
+`/leaderboard/all-time/` removed. `/leaderboard/` is now the only URL and defaults
+to All-Time view. A 90-Day tab appears only when enabled in Admin → Site Settings.
+
+### ✅ Admin Site Settings tab (4th tab)
+New "Site Settings" tab in `/admin/`. First setting: toggle to show/hide the 90-Day
+leaderboard tab. Saves via new `admin_set_setting()` Supabase RPC. Toggle state
+persists in the new `site_settings` table.
+
+### ✅ Supabase: site_settings table + admin_set_setting() RPC
+New table `site_settings (key TEXT PRIMARY KEY, value TEXT)` with public read RLS.
+`admin_set_setting(p_key, p_value)` is SECURITY DEFINER — verifies caller email
+server-side before writing.
+
+### ✅ Timer updated 30s → 45s (user feedback)
+Updated in game logic, How to Play card (both game and landing page), and README.
+
+### ✅ Green-tunnel cap 3 → 2 per game (both modes)
+
+### ✅ app-game/build.py — comprehensive code comments added
+Header block documents all key JS functions: scoring formula, round/game flow,
+timer, result screen, end/review screen, lightbox, photo selection rules, image
+preloading, practice photo 1 (tdlce), Google auth, user profiles, DB communication.
+
+### ✅ app-explore rebuilt with 245 photos, paths updated
+
+### ✅ Admin: score display rounded to 1 decimal in Recent Games
+
+### ✅ Lightbox caption: photo_by on its own line
+
+### ✅ Duplicate profile row fixed (admin Edit Database stale UUID)
 
 ---
 

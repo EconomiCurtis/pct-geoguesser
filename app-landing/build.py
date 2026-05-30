@@ -219,7 +219,7 @@ h1 span {{ color: var(--pct-teal); }}
     <ul>
       <li>You'll see 10 photos taken somewhere along the PCT</li>
       <li><span>Enter the PCT (NoBo) mile you think matches the location (<a href="https://pcta.maps.arcgis.com/apps/instant/sidebar/index.html?appid=3b1817932adf42009f30b6b38828212e" target="_blank" rel="noopener">see PCTA mile markers</a>)</span></li>
-      <li>You'll have <strong>30 seconds</strong> to guess</li>
+      <li>You'll have <strong>45 seconds</strong> to guess</li>
     </ul>
     <h3>Scoring (top score wins)</h3>
     <ul>

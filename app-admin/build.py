@@ -274,6 +274,30 @@ td.val-muted {{ color: var(--muted); }}
   transition: filter .15s;
 }}
 .btn-modal-confirm:hover {{ filter: brightness(1.18); }}
+
+/* ── Toggle switch ────────────────────────────────────── */
+.toggle-switch {{
+  position: relative; display: inline-block;
+  width: 48px; height: 26px; flex-shrink: 0;
+}}
+.toggle-switch input {{ opacity: 0; width: 0; height: 0; }}
+.toggle-slider {{
+  position: absolute; inset: 0; background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 26px;
+  cursor: pointer; transition: background .2s, border-color .2s;
+}}
+.toggle-slider::before {{
+  content: ''; position: absolute;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--muted); left: 3px; top: 3px;
+  transition: transform .2s, background .2s;
+}}
+.toggle-switch input:checked + .toggle-slider {{
+  background: var(--teal); border-color: var(--teal);
+}}
+.toggle-switch input:checked + .toggle-slider::before {{
+  transform: translateX(22px); background: #fff;
+}}
 </style>
 </head>
 <body>
@@ -308,6 +332,7 @@ td.val-muted {{ color: var(--muted); }}
     <button class="tab tab-active" onclick="switchTab('games')">Recent Games (last 100)</button>
     <button class="tab"            onclick="switchTab('stats')">Photo Stats</button>
     <button class="tab"            onclick="switchTab('edit')">Edit Database</button>
+    <button class="tab"            onclick="switchTab('settings')">Site Settings</button>
   </div>
 
   <!-- ── VIEW: Recent Games ─────────────────────────── -->
@@ -355,6 +380,26 @@ td.val-muted {{ color: var(--muted); }}
         </thead>
         <tbody id="stats-tbody"></tbody>
       </table>
+    </div>
+  </section>
+
+  <!-- ── VIEW: Site Settings ──────────────────────── -->
+  <section id="view-settings" style="display:none">
+    <div style="max-width:480px;display:flex;flex-direction:column;gap:24px;padding:8px 0">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px 24px;display:flex;flex-direction:column;gap:12px">
+        <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--teal)">Leaderboard</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:16px">
+          <div>
+            <div style="font-size:15px;font-weight:600">Show 90-Day Leaderboard</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:3px">When on, a "90-Day" tab appears on /leaderboard/ alongside All-Time.</div>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="toggle-rolling" onchange="saveSetting('show_rolling_leaderboard', this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+      <p id="settings-status" style="font-size:13px;color:var(--muted);text-align:center;min-height:18px"></p>
     </div>
   </section>
 
@@ -415,7 +460,7 @@ sb.auth.onAuthStateChange(async (event, session) => {{
     }}
     document.getElementById('nav-user').textContent = session.user.email;
     document.getElementById('nav-bar').style.display = 'flex';
-    await loadAdminData();
+    await Promise.all([loadAdminData(), loadSettings()]);
   }} else if (event === 'SIGNED_OUT') {{
     window.location.href = '/';
   }}
@@ -424,7 +469,7 @@ sb.auth.onAuthStateChange(async (event, session) => {{
 async function doSignOut() {{ await sb.auth.signOut(); }}
 
 // ── Tab switching ─────────────────────────────────────────
-const TABS = ['games', 'stats', 'edit'];
+const TABS = ['games', 'stats', 'edit', 'settings'];
 function switchTab(tab) {{
   TABS.forEach(t => {{
     document.getElementById('view-' + t).style.display = (t === tab) ? '' : 'none';
@@ -432,6 +477,39 @@ function switchTab(tab) {{
   document.querySelectorAll('.tab-bar .tab').forEach((btn, i) => {{
     btn.classList.toggle('tab-active', TABS[i] === tab);
   }});
+}}
+
+// ── Site Settings ─────────────────────────────────────────
+async function loadSettings() {{
+  try {{
+    const {{ data }} = await sb
+      .from('site_settings')
+      .select('key, value');
+    if (!data) return;
+    for (const row of data) {{
+      if (row.key === 'show_rolling_leaderboard') {{
+        document.getElementById('toggle-rolling').checked = row.value === 'true';
+      }}
+    }}
+  }} catch (_) {{}}
+}}
+
+async function saveSetting(key, value) {{
+  const statusEl = document.getElementById('settings-status');
+  statusEl.textContent = 'Saving…';
+  statusEl.style.color = 'var(--muted)';
+  const {{ error }} = await sb.rpc('admin_set_setting', {{
+    p_key:   key,
+    p_value: String(value),
+  }});
+  if (error) {{
+    statusEl.textContent = 'Error: ' + error.message;
+    statusEl.style.color = 'var(--red)';
+  }} else {{
+    statusEl.textContent = 'Saved ✓';
+    statusEl.style.color = 'var(--teal)';
+    setTimeout(() => {{ statusEl.textContent = ''; }}, 2500);
+  }}
 }}
 
 // ── Data loading ──────────────────────────────────────────

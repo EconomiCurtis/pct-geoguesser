@@ -81,7 +81,7 @@
 #   Timeout     → score = 0, perfect = false
 #
 # Timer
-#   TIMER_SEC = 45         → seconds per photo
+#   TIMER_SEC = 60         → seconds per photo
 #   startTimer()           → sets timeLeft = TIMER_SEC, starts a 1-second
 #                             setInterval; calls renderTimer() each tick
 #   renderTimer()          → updates the red progress bar width and numeric
@@ -397,7 +397,7 @@ textarea.form-input { resize: vertical; min-height: 80px; font-size: 14px; line-
     <ul>
       <li>You'll see 10 photos taken somewhere along the PCT</li>
       <li><span>Enter the PCT (NoBo) mile you think matches the location (<a href="https://pcta.maps.arcgis.com/apps/instant/sidebar/index.html?appid=3b1817932adf42009f30b6b38828212e" target="_blank" rel="noopener">see PCTA mile markers</a>)</span></li>
-      <li>You'll have <strong>45 seconds</strong> to guess</li>
+      <li>You'll have <strong>60 seconds</strong> to guess</li>
     </ul>
     <h3>Scoring (top score wins)</h3>
     <ul>
@@ -1226,7 +1226,7 @@ h1 span {{ color: var(--pct-teal); }}
 <div id="screen-guess" class="screen">
   <div class="topbar">
     <div class="progress-text">Photo <strong id="g-cur">1</strong> / <strong id="g-tot">10</strong></div>
-    <div class="timer-num" id="timer-num">45</div>
+    <div class="timer-num" id="timer-num">60</div>
   </div>
   <div class="timer-bar-track">
     <div class="timer-bar-fill" id="timer-fill" style="width:100%"></div>
@@ -1351,7 +1351,7 @@ h1 span {{ color: var(--pct-teal); }}
 const photos = {game_data};
 {js_supabase}
 // ── Config ────────────────────────────────────────────────
-const TIMER_SEC   = 45;
+const TIMER_SEC   = 60;
 const FULL_CREDIT = 3;
 const GAME_SIZE   = 10;
 const MAX_TOTAL   = 2655.8;

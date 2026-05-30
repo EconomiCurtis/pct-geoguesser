@@ -2,9 +2,11 @@
 
 A GeoGuesser-style web game for the Pacific Crest Trail.
 Players see a trail photo and guess the mile marker. The closer, the better.
-Highest score wins — max 2655.8 pts (one point per PCT mile). 
+Highest score wins — max 2655.8 pts (one point per PCT mile).
 
-Live at **https://pct-geoguesser.pages.dev**
+## Play now at [pct-geoguesser.economicurtis.com](https://pct-geoguesser.economicurtis.com)
+
+> Think you know the PCT? Put your trail knowledge to the test.
 
 ---
 
@@ -17,14 +19,20 @@ where hikers can test their trail knowledge photo by photo.
 **The raw material:** 245+ trail photos with mile, direction (NoBo/SoBo), section,
 and date, and other metadata in each filename.
 
-**The challenge:** Turn that into a playable game without giving away the answer
-in URLs or filenames, handle login and a global leaderboard, and make it feel
-polished on mobile.
+**The challenge:** Turn that into a playable game -- dare I say, even a fun game...? 
+-- without giving away the answer in URLs or filenames, handle login and a global 
+leaderboard, and make it feel polished on mobile.
 
 **What we did:**
 - Anonymized every photo with a random 5-letter ID so filenames don't reveal location
-- Built a practice mode (no login) and a scored mode (Google login, leaderboard)
-- Hosted everything as static files on Cloudflare Pages with Supabase as the backend
+- Built a photo-selection engine that draws balanced samples across PCT sections, enforces spacing between photos, and caps too-easy, repetitive, or too-difficult shots
+- Practice mode (no login) and scored mode (Google OAuth login, global leaderboard)
+- GeoGuessr-style exponential decay scoring — highest score wins, with a grace zone for near-perfect guesses
+- Hiker profile pages, a global leaderboard, and an admin dashboard (photo stats, player management, site settings)
+- Anti-cheat: back-navigation during a live game resets state and shows an interruption modal
+- All static files on Cloudflare Pages; Supabase handles auth, scores, and server-side RPCs with row-level security
+
+See [TODO.md](TODO.md) for the full build history.
 
 ---
 
@@ -59,9 +67,9 @@ polished on mobile.
 │   └── scored/
 │       └── index.html               ← (auto-generated) scored game at /game/
 │
-├── app-leaderboard/                 ← leaderboard pages at /leaderboard/ and /leaderboard/all-time/
+├── app-leaderboard/                 ← leaderboard page at /leaderboard/
 │   ├── build.py
-│   └── index.html                   ← (auto-generated; both leaderboard pages use one file)
+│   └── index.html                   ← (auto-generated)
 │
 ├── app-hiker/                       ← hiker profile at /hiker/?id=<uuid>
 │   ├── build.py
@@ -78,8 +86,7 @@ polished on mobile.
     ├── index.html                   ← landing page
     ├── practice/index.html          ← v1 practice game
     ├── game/index.html              ← v2 scored game
-    ├── leaderboard/index.html       ← 90-day leaderboard
-    ├── leaderboard/all-time/index.html ← all-time leaderboard
+    ├── leaderboard/index.html       ← leaderboard (all-time default; 90-day tab when enabled)
     ├── hiker/index.html             ← hiker profile (loads player via ?id= query param)
     ├── admin/index.html             ← admin dashboard
     ├── miles/                       ← 245+ photos named {id}.jpeg / {id}.png
@@ -96,7 +103,7 @@ Tagline, logo, and "About PCT GeoGuesser" footer link (page TBD).
 
 ### `/practice/` — Practice game (v1)
 No login required. 10 photos per game — Mile 1 is always first (easy opener),
-remaining 9 drawn randomly across all 5 PCT sections. 45-second timer per photo.
+remaining 9 drawn randomly across all 5 PCT sections. Each photo is timed.
 Slider to guess, score shown per round and in a final summary table. No data saved.
 
 ### `/game/` — Scored game (v2)
@@ -105,10 +112,9 @@ via the `submit_game()` RPC. After the game, shows the player's 90-day leaderboa
 rank. Profile setup on first login (trail name, PCT year, optional "about" blurb).
 Players can edit their profile from the start screen at any time.
 
-### `/leaderboard/` and `/leaderboard/all-time/`
-Top players by total score. 90-day view on the main leaderboard, all-time on the
-second page. Trail names link to each player's hiker profile. Shows score, perfects,
-and games played.
+### `/leaderboard/`
+Top players by total score. May have a 90-day tab when enabled via Admin Site Settings.
+Trail names link to each player's hiker profile. Shows score, perfects, and games played.
 
 ### `/hiker/?id=<uuid>` — Hiker profile
 Public profile page for any player. Shows trail name, PCT year, about blurb, stat
@@ -123,14 +129,13 @@ RPCs — not just client-side). Three tabs:
 - **Photo Stats** — per-photo stats: appearances, average guessing error, SD
 - **Edit Database** — search players by name; inline trail-name editing; delete a
   player's games only, or delete the full player record
+- **Site Settings** — admin toggles (e.g. show/hide the 90-day leaderboard tab)
 
 ---
 
 ## Scoring
 
-The scoring system was redesigned after playtesting. The original method added up the raw mile difference between each guess and the correct answer — lowest total wins. It was technically simple, but playtesters found "lower is better" counterintuitive for a game.
-
-The new system borrows from the real GeoGuessr game's scoring formula, adapted with custom parameters for the PCT. Like GeoGuessr, it uses exponential decay: the further off your guess, the faster your score drops. This means wild guesses hurt more than under the old linear method. And now, intuitively, the best guesser now has the **highest** score.
+Scoring borrows from the real GeoGuessr game's scoring formula, adapted with custom parameters for the PCT. Like GeoGuessr, it uses exponential decay: the further off your guess, the faster your score drops. This means wild guesses hurt more than under the old linear method. And now, intuitively, the best guesser now has the **highest** score.
 
 **Formula (per photo):**
 ```
@@ -153,6 +158,8 @@ where d_eff = max(0, |guess − actual| − 3)
 | Timeout   |   0.0           |   0%     |
 
 A perfect game (all 10 guesses within 3 miles) scores **2,655.8 pts** — the full length of the trail.
+
+The scoring system was redesigned after playtesting. The original method added up the raw mile difference between each guess and the correct answer — lowest total wins. I personally preferred that, and it was technically simple, but playtesters found "lower is better" counterintuitive.
 
 ---
 
@@ -191,7 +198,7 @@ the Python scripts that generate each `index.html`.
 | **Supabase** | Backend-as-a-service. Hosts PostgreSQL with Row Level Security, Google OAuth, and server-side RPCs (`submit_game`, admin functions). The publishable anon key is safe to embed in HTML because RLS restricts what it can do. |
 | **Google OAuth (via Supabase)** | One-click login for the scored game. No password flow needed. |
 | **PostgreSQL (Supabase)** | Four tables: `profiles`, `game_sessions`, `game_guesses`, `photo_stats`. Triggers enforce rate limiting (1 min between games) and a per-user game cap (10). |
-| **Welford's online algorithm** | Used in `submit_game()` to maintain running mean, variance, and SD for photo stats without storing raw guesses. Numerically stable, requires only three stored values (n, mean, M2). |
+| **Photo Stats** | Per-photo running mean, variance, and SD tracked in `submit_game()` using Welford's online algorithm. Numerically stable — requires only three stored values (n, mean, M2) rather than raw guesses. |
 | **SECURITY DEFINER RPCs** | `submit_game()` and all admin RPCs run with table-owner privileges, bypassing RLS to write to tables that are otherwise read-only to clients. Admin RPCs verify the caller's email server-side — safe to call via the anon key. |
 | **Python (build scripts)** | Each app's `build.py` bakes the relevant slice of `photos.csv` into a self-contained `index.html` as an inline JSON array. No API call needed for photo metadata at runtime. |
 | **Vanilla JS** | All game logic, UI, and Supabase client calls. No framework. The Supabase JS client (`@supabase/supabase-js` via CDN) handles auth and database queries. |

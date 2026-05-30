@@ -1,8 +1,6 @@
 # PCT GeoGuesser — TODO
 
 This doc outlines our goals, what we've planned to do, and what we've done.
-It will eventually be superseded by the GitHub repo's pull request log once
-the project moves there.
 
 ## Goal
 
@@ -13,7 +11,7 @@ Hosted on Cloudflare Pages. Backend: Supabase (PostgreSQL + Google OAuth).
 
 ---
 
-## Up Next / Ideas / future work
+## To Do / Up Next / Ideas / future work
 - About page (`/about/`) — landing page "About PCT GeoGuesser" link points here
 - Photo stats recalculation tool in admin (after bulk deletes)
 - More photos / photo reassignment before launch
@@ -21,166 +19,57 @@ Hosted on Cloudflare Pages. Backend: Supabase (PostgreSQL + Google OAuth).
 
 ---
 
-## Recently Completed — Polish + Anti-Cheat (2026-05-30)
-
-### ✅ Back-navigation anti-cheat guard
-Hitting the browser back button during an active game (guess or result screen)
-then clicking forward used to restore the page from bfcache with the timer paused —
-giving players unlimited time to look up the answer.
-Fix: `pageshow` listener detects bfcache restores (`e.persisted = true`) during an
-active game. Stops the timer, wipes game state, returns to the start screen, and
-shows a "Game Interrupted" modal. `history.replaceState()` flushes the bfcache entry
-so subsequent forward navigation does a clean reload instead of another restore.
-Applies to both practice and scored modes.
-
-### ✅ Leaderboard consolidated to single URL
-`/leaderboard/all-time/` removed. `/leaderboard/` is now the only URL and defaults
-to All-Time view. A 90-Day tab appears only when enabled in Admin → Site Settings.
-
-### ✅ Admin Site Settings tab (4th tab)
-New "Site Settings" tab in `/admin/`. First setting: toggle to show/hide the 90-Day
-leaderboard tab. Saves via new `admin_set_setting()` Supabase RPC. Toggle state
-persists in the new `site_settings` table.
-
-### ✅ Supabase: site_settings table + admin_set_setting() RPC
-New table `site_settings (key TEXT PRIMARY KEY, value TEXT)` with public read RLS.
-`admin_set_setting(p_key, p_value)` is SECURITY DEFINER — verifies caller email
-server-side before writing.
-
-### ✅ Timer updated 30s → 45s (user feedback)
-Updated in game logic, How to Play card (both game and landing page), and README.
-
-### ✅ Green-tunnel cap 3 → 2 per game (both modes)
-
-### ✅ app-game/build.py — comprehensive code comments added
-Header block documents all key JS functions: scoring formula, round/game flow,
-timer, result screen, end/review screen, lightbox, photo selection rules, image
-preloading, practice photo 1 (tdlce), Google auth, user profiles, DB communication.
-
-### ✅ app-explore rebuilt with 245 photos, paths updated
-
-### ✅ Admin: score display rounded to 1 decimal in Recent Games
-
-### ✅ Lightbox caption: photo_by on its own line
-
-### ✅ Duplicate profile row fixed (admin Edit Database stale UUID)
-
----
-
 ## Sorted
 
-### Recently Completed — Launch + Post-Launch Fixes (2026-05-29)
+### ✅ Polish + Anti-Cheat (2026-05-30)
 
-#### ✅ Photos update
-- [X] Add more photos for Washington and Oregon
-- [X] Reduce v1-demo photo pool to ~40 (edit photos.csv: change ~62 rows from `v1-demo` → `v2-scored`)
-- [X] Tag green-tunnel photos in photos.csv (dense forest, no visible landmarks), limit number of these in each game to <=2. 
-
-
-#### ✅ Deployed to production
-- [x] Wiped Supabase game_sessions (old scores used miles-off system, incompatible with new pts)
-- [x] Deployed via `npx wrangler pages deploy deploy/ --project-name=pct-geoguesser`
-- [x] Smoke-tested live site — practice game, scored game, leaderboard, hiker page all working
-
-#### ✅ DB schema fix — float scores
-Old `submit_game()` RPC had `p_total_score INTEGER` and `score::INTEGER` cast, causing
-`invalid input syntax for type integer` error when saving exponential-decay scores (floats).
-Fixed by altering `game_sessions.total_score` and `game_guesses.score` to `NUMERIC`,
-updating `submit_game()` parameter and cast, and dropping the stale INTEGER overload.
-
-#### ✅ Lightbox caption — photo_by on its own line
-In both `/game` result screen and `/admin` photo stats lightbox, the `photo_by` credit
-now appears on a second line below the mile/section/direction/date meta.
-
-#### ✅ Admin duplicate player fix
-"First Light" had two `profiles` rows (old auth UUID orphaned after re-login).
-Deleted stale row; confirmed no other duplicates.
-
-#### ✅ File structure reorganisation
-Raw photos moved from external drive to `img/raw-photos-save/Summer 2025/` inside the repo.
-Updated `misc/copy_rename_photos.py`, `misc/generate_photo_csv.py`, and
-`app-explore/build_webapp.py` to use relative paths — no more hardcoded external drive paths.
+- **Back-nav anti-cheat guard:** `pageshow` listener detects bfcache restores (`e.persisted = true`) during an active game. Stops timer, wipes state, returns to start screen, shows "Game Interrupted" modal. `history.replaceState()` flushes bfcache so forward navigation does a clean reload. Applies to both modes.
+- **Leaderboard consolidated:** `/leaderboard/all-time/` removed. `/leaderboard/` is the only URL, defaults to All-Time. 90-Day tab appears only when enabled in Admin → Site Settings.
+- **Admin Site Settings tab (4th tab):** Toggle to show/hide 90-Day leaderboard. Saves via `admin_set_setting()` RPC. Persists in new `site_settings` table.
+- **Supabase:** `site_settings` table + `admin_set_setting()` SECURITY DEFINER RPC added.
+- **Timer:** 30s → 45s across game, landing page, README.
+- **Green-tunnel cap:** 3 → 2 per game (both modes).
+- **`app-game/build.py` docs:** Comprehensive header block covering all key JS functions.
+- **Admin Recent Games:** Score rounded to 1 decimal.
+- **Lightbox caption:** `photo_by` on its own line.
+- **Duplicate profile fix:** Stale UUID orphan removed from admin Edit Database.
 
 ---
 
-### Recently Completed — Scoring Overhaul + UI Polish
+### ✅ Launch + Post-Launch Fixes (2026-05-29)
 
-#### ✅ New Scoring System (highest score wins)
-
-**Formula:**
-```
-S_photo = (2655.8 / N) × e^(−10 × d_eff / 2655.8)
-```
-- **N** = 10 photos → per-photo max = **265.58 pts**
-- **Total max = 2655.8 pts** (the PCT's exact mileage — intentional easter egg)
-- **Grace zone**: `d_eff = max(0, |guess − actual| − 3)` — within ±3 miles = full credit
-- **Timeout** = 0 pts for that round
-
-#### ✅ Code Changes Completed
-
-- [x] `app-game-v2-scored/build.py` — exponential scoring, photo_by chips, end-table credit, UI fixes
-- [x] `app-game-v1-practice/build.py` — same scoring + UI changes as game-v2
-- [x] `app-leaderboard/build.py` — `ascending: false`, pts units, updated copy
-- [x] `app-hiker/build.py` — hero score card with callout text + leaderboard ranking badges
-- [x] `app-admin/build.py` — Date + Photo By columns in Photo Stats
-- [x] Renamed `app-game-v1-testing` → `app-game-v1-practice`
-- [x] Renamed `app-game-v2` → `app-game-v2-scored`
-- [x] Updated `build.sh`, `.gitignore`, `README.md`, and sub-READMEs
-
-#### ✅ `photo_by` Credit Field
-
-- [x] Shown in active round hints area (alongside season/direction chips)
-- [x] Shown on result screen — own line below the meta chips row
-- [x] Shown in end-table thumbnail sub-line (photo_by only; date stays in lightbox caption)
-- [x] Lightbox caption includes date + photo_by
-- [x] Admin Photo Stats table: Date + Photo By columns added
-
-#### ✅ Hiker Profile Hero Card
-
-- [x] Big best score, callout text (random, tier-based), ranking badges
-- [x] Support stats (games played, avg score, total perfects) below
-- [x] 7 callout options for top tier, multiple options per tier
-
-#### 🗄️ Database Reset ✅ Done 2026-05-29
-
-Old scores (miles-off totals, lower=better) were incompatible with new scores (pts, higher=better).
-`profiles` table was unaffected. `game_sessions`, `game_guesses`, and `photo_stats` wiped.
-Schema updated: `total_score` and `score` columns changed from `INTEGER` → `NUMERIC`.
+- **Photos:** 42 new Washington photos added (miles 2467–2655), 245 total. v1-demo pool reduced. Green-tunnel cap enforced.
+- **Deployed to production:** Wiped Supabase game_sessions, deployed via wrangler, smoke-tested.
+- **DB schema fix — float scores:** `total_score` + `score` columns changed `INTEGER` → `NUMERIC`. Stale RPC overload dropped.
+- **File structure:** Raw photos moved from external drive to `img/raw-photos-save/`. All paths now relative.
+- **Admin duplicate player fix:** Stale profile row removed.
 
 ---
 
-### First Init and testing version. 
+### ✅ Scoring Overhaul + UI Polish
 
-- [x] Init basic photo-explorer app
-- [x] Photo anonymisation — random IDs, CSV with mile/direction/section metadata
-- [x] Mobile improvements — full-screen image, pinch-to-zoom, responsive nav
-- [x] Build practice game (v1) — timer, slider, scoring, result + end screens
-- [x] Game polish — tri-colour slider dot, GC-safe preload, pinch-to-zoom, Futura font, OG tags
-- [x] Rename `game-v1/` → `app-game-v1-testing/`, update READMEs
-- [x] Update "How to Play" card — three sections, bold key points, About link placeholder
-- [x] Supabase project setup — project created, Google OAuth, API keys noted (Step 1)
-- [x] Schema design — photo_stats with Welford variance/SD, RLS, rate-limit triggers
-- [x] Step 2 — Supabase schema live (tables, RLS, triggers, RPC)
-- [x] Step 3 — Landing page (`/`), v1 practice game moved to `/practice/`
-- [x] Step 4 — v2 scored game at `/game/` (Google login, signup, submit_game RPC, rank display)
-- [x] Step 5 — Leaderboard pages (`/leaderboard/` 90-day + `/leaderboard/all-time/`)
-- [x] Step 6 — Hiker profile page (`/hiker/?id=<uuid>`)
-- [x] Admin dashboard (`/admin/`) — three tabs:
-  - **Recent Games** — last 100 scored games with player links and timestamps
-  - **Photo Stats** — per-photo appearance count, average error, SD (Welford's algorithm)
-  - **Edit Database** — player search; inline name editing; delete games or full player
-- [x] Hiker profile links from leaderboard, admin, and game greeting
-- [x] Edit profile (about text) from the game start screen
-- [x] Bug fix — game_guesses/photo_stats mismatch caused by `prepareNextGame()` overwriting
-      `gamePhotos` before `submitGameScore()` captured the payload
-- [x] Practice game: Mile 1 always shown first (easy opener), remaining 9 random by section
-- [x] SQL: rate limit reduced 5 min → 1 min; session cap reduced 500 → 10
-- [x] Scoring overhaul — highest-score-wins, exponential decay, max 2655.8 pts
-- [x] `photo_by` credit field — shown in hints, result screen, end table, lightbox
-- [x] Hiker profile hero card — big score, callout text (7 tiers, random pick), ranking badges
-- [x] Admin Photo Stats — Date + Photo By columns
-- [x] `app-game-v1-testing` → `app-game-v1-practice` rename (later merged)
-- [x] `app-game-v2` → `app-game-v2-scored` rename (later merged)
-- [x] Merged `app-game-v1-practice` + `app-game-v2-scored` → single `app-game/build.py` with `make_html(mode)`
-- [x] final-avg line: "On average, your guesses were X miles off"
-- [x] Result screen photo_by: own line below meta chips
+- **New scoring system** (highest score wins): exponential decay formula, max 2655.8 pts, ±3 mi grace zone, timeout = 0 pts.
+- **`photo_by` credit field:** Shown in hints, result screen, end table, lightbox.
+- **Hiker profile hero card:** Big best score, tier-based callout text, ranking badges.
+- **Admin Photo Stats:** Date + Photo By columns.
+- **Leaderboard:** Descending sort, pts units.
+- **`app-game/` consolidation:** Merged `app-game-v1-practice` + `app-game-v2-scored` → single `build.py` with `make_html(mode)`.
+- **Database reset:** `game_sessions`, `game_guesses`, `photo_stats` wiped. Schema updated.
+
+---
+
+### ✅ First Init and testing version
+
+- Init basic photo-explorer app
+- Photo anonymisation — random IDs, CSV with mile/direction/section metadata
+- Mobile improvements — full-screen image, pinch-to-zoom, responsive nav
+- Practice game (v1) — timer, slider, scoring, result + end screens
+- Game polish — tri-colour slider dot, preload, pinch-to-zoom, Futura font, OG tags
+- Supabase setup — Google OAuth, schema (tables, RLS, rate-limit triggers, RPCs)
+- Landing page (`/`), practice at `/practice/`, scored game at `/game/`
+- Leaderboard pages (`/leaderboard/`)
+- Hiker profile page (`/hiker/?id=<uuid>`)
+- Admin dashboard (`/admin/`) — Recent Games, Photo Stats, Edit Database
+- Profile editing from game start screen
+- Practice game: Mile 1 (tdlce) always shown first
+- SQL: rate limit 5 min → 1 min; session cap → 10 (later 15)

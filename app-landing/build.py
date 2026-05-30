@@ -15,7 +15,7 @@
 import os
 HERE          = os.path.dirname(os.path.abspath(__file__))
 OUT_PATH      = os.path.join(HERE, "index.html")
-MISC_BASE_URL = "https://pct-geoguesser.pages.dev/misc"
+MISC_BASE_URL = "https://pct-geoguesser.economicurtis.com/misc"
 
 html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -173,8 +173,11 @@ h1 span {{ color: var(--pct-teal); }}
   .btn-cta {{ width: 100%; }}
 }}
 
-/* ── About link ───────────────────────────────────────── */
-.about-link {{ font-size: 12px; color: var(--muted); text-align: center; }}
+/* ── Footer links ─────────────────────────────────────── */
+.footer-links {{ font-size: 12px; color: var(--muted); text-align: center; }}
+.footer-links a {{ color: var(--muted); text-decoration: none; }}
+.footer-links a:hover {{ color: var(--text); }}
+.footer-links .dot {{ margin: 0 6px; opacity: .4; }}
 
 /* ── Mobile: larger logos ─────────────────────────────── */
 @media (max-width: 640px) {{
@@ -219,7 +222,7 @@ h1 span {{ color: var(--pct-teal); }}
     <ul>
       <li>You'll see 10 photos taken somewhere along the PCT</li>
       <li><span>Enter the PCT (NoBo) mile you think matches the location (<a href="https://pcta.maps.arcgis.com/apps/instant/sidebar/index.html?appid=3b1817932adf42009f30b6b38828212e" target="_blank" rel="noopener">see PCTA mile markers</a>)</span></li>
-      <li>You'll have <strong>45 seconds</strong> to guess</li>
+      <li>You'll have <strong>60 seconds</strong> to guess</li>
     </ul>
     <h3>Scoring (top score wins)</h3>
     <ul>
@@ -240,7 +243,11 @@ h1 span {{ color: var(--pct-teal); }}
     <a href="/game/"     class="btn-cta btn-scored">Scored Game →</a>
   </div>
 
-  <p class="about-link"><a href="/about/" style="color:var(--muted);text-decoration:none;">About PCT GeoGuesser</a></p>
+  <p class="footer-links">
+    <a href="/leaderboard/">Leaderboard</a>
+    <span class="dot">·</span>
+    <a href="/">About</a>
+  </p>
 
 </div>
 

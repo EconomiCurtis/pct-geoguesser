@@ -400,8 +400,9 @@ function showState(id) {{
 const MAX_SCORE = 2655.8;
 
 function getCalloutText(name, bestScore) {{
+  if (bestScore <= 0) return `No scores yet — time to hit the trail!`;
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-  if (bestScore >= 2400) return pick([
+  return pick([
     `It's almost like ${{name}} walked over every inch of the PCT.`,
     `${{name}} may have built the whole PCT.`,
     `${{name}} knows the PCT better than marmots look chonky.`,
@@ -409,28 +410,21 @@ function getCalloutText(name, bestScore) {{
     `${{name}} knows the PCT almost as much as they smell.`,
     `Okay, did ${{name}} hike the trail twice or something?`,
     `${{name}} is so one with the trail, bears need to carry a ${{name}}-canister.`,
-  ]);
-  if (bestScore >= 2000) return pick([
     `${{name}} really knows the PCT — that's elite trail knowledge.`,
     `Wow, ${{name}} really knows the PCT.`,
     `The mayor of Idyllwild would like to give ${{name}} a tasty treat.`,
     `${{name}} knows the trail so well they pronounce "Seiad Valley" correctly.`,
-  ]);
-  if (bestScore >= 1500) return pick([
     `Wow, ${{name}} knows their trail.`,
     `${{name}} knows their way around the trail pretty darn well.`,
     `Not bad, ${{name}}. The PCT recognizes one of its own.`,
     `The trail gods give ${{name}} a polite nod.`,
     `${{name}} is the legend every map wishes it had.`,
     `Every good map has a legend to show you how far you've gone. My legend is ${{name}}.`,
-  ]);
-  if (bestScore >= 1000) return pick([
     `${{name}} has some serious PCT knowledge.`,
     `${{name}} knows enough to be dangerous near a resupply box.`,
+    `${{name}} is getting to know the trail well!`,
+    `Every guess is a step closer to knowing the PCT. Keep exploring!`,
   ]);
-  if (bestScore >= 500)  return `${{name}} is getting to know the trail well!`;
-  if (bestScore >  0)    return `Every guess is a step closer to knowing the PCT. Keep exploring!`;
-  return `No scores yet — time to hit the trail!`;
 }}
 
 async function load() {{

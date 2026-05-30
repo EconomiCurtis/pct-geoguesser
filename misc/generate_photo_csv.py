@@ -4,11 +4,11 @@ import csv
 import random
 import string
 
-PHOTO_DIR      = "/Volumes/PCT2025-4T/2026 PCT GeoGuesser Game/raw-photos-save/Summer 2025"
-OUTPUT_CSV     = "/Volumes/PCT2025-4T/2026 PCT GeoGuesser Game/misc/photos.csv"
+PHOTO_DIR      = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "img", "raw-photos-save", "Summer 2025")
+OUTPUT_CSV     = os.path.join(os.path.dirname(os.path.abspath(__file__)), "photos.csv")
 SEASON         = "Summer 2025"  # written as the "date" column; matches the source folder name
 IMAGE_BASE_URL = "https://pct-geoguesser.pages.dev/miles"  # update here if hosting changes
-FIELDNAMES     = ["id", "mile", "direction", "section", "date", "filename", "url", "version"]
+FIELDNAMES     = ["id", "mile", "direction", "section", "date", "filename", "url", "version", "photo_by", "tags"]
 
 def make_url(row_id, filename):
     ext = os.path.splitext(filename)[1].lower()  # .jpeg or .jpg
@@ -87,16 +87,18 @@ for fname in all_files:
         "date":      SEASON,
         "filename":  fname,
         "url":       make_url(uid, fname),
-        "version":   "",   # assigned below after mile-sort
+        "version":   "",   # default assigned below; manual edits in CSV are always preserved
+        "photo_by":  "",   # set manually after adding to CSV if needed
+        "tags":      "",   # e.g. "green-tunnel" — set manually in CSV
     })
 
-# ── Combine, sort by mile, then assign versions alternating ───────
-# Sort ascending by mile, then stripe: even index → v1-demo, odd → v2-scored.
-# Re-running is safe: IDs never change; versions always reflect the current
-# mile-order so adding photos keeps the split evenly distributed.
+# ── Combine and sort by mile ───────────────────────────────────────
+# Versions are NEVER overwritten — manual edits in photos.csv are permanent.
+# New photos with no version yet default to v2-scored (move to v1-demo by hand if desired).
 all_rows = sorted(existing_rows + new_rows, key=lambda r: float(r["mile"]))
-for i, r in enumerate(all_rows):
-    r["version"] = "v1-demo" if i % 2 == 0 else "v2-scored"
+for r in all_rows:
+    if not r.get("version"):
+        r["version"] = "v2-scored"
 
 with open(OUTPUT_CSV, "w", newline="") as f:
     writer = csv.DictWriter(f, fieldnames=FIELDNAMES)

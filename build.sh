@@ -24,16 +24,15 @@ mkdir -p deploy/practice \
 
 # Generate HTML for each page
 python3 app-landing/build.py
-python3 app-game-v1-testing/build.py
-python3 app-game-v2/build.py
+python3 app-game/build.py
 python3 app-leaderboard/build.py
 python3 app-hiker/build.py
 python3 app-admin/build.py
 
 # Copy generated HTML into deploy/
 cp app-landing/index.html                      deploy/index.html
-cp app-game-v1-testing/index.html              deploy/practice/index.html
-cp app-game-v2/index.html                      deploy/game/index.html
+cp app-game/practice/index.html                deploy/practice/index.html
+cp app-game/scored/index.html                  deploy/game/index.html
 cp app-leaderboard/index.html                  deploy/leaderboard/index.html
 cp app-leaderboard/all-time/index.html         deploy/leaderboard/all-time/index.html
 cp app-hiker/index.html                        deploy/hiker/index.html

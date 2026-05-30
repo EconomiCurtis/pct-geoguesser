@@ -2,9 +2,10 @@ import os
 import csv
 import shutil
 
-SRC_DIR = "/Volumes/PCT2025-4T/2026 PCT GeoGuesser Game/raw-photos-save/Summer 2025"
-DST_DIR = "/Volumes/PCT2025-4T/2026 PCT GeoGuesser Game/img/miles"
-CSV_PATH = "/Volumes/PCT2025-4T/2026 PCT GeoGuesser Game/misc/photos.csv"
+_HERE    = os.path.dirname(os.path.abspath(__file__))
+SRC_DIR  = os.path.join(_HERE, "..", "img", "raw-photos-save", "Summer 2025")
+DST_DIR  = os.path.join(_HERE, "..", "deploy", "miles")
+CSV_PATH = os.path.join(_HERE, "photos.csv")
 
 os.makedirs(DST_DIR, exist_ok=True)  # create destination if it doesn't already exist
 

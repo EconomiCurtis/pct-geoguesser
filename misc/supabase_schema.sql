@@ -147,8 +147,8 @@ CREATE TRIGGER validate_score
 CREATE OR REPLACE FUNCTION enforce_session_cap()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
-  IF (SELECT COUNT(*) FROM game_sessions WHERE user_id = NEW.user_id) >= 10 THEN
-    RAISE EXCEPTION 'Session cap reached (10 games max per user)';
+  IF (SELECT COUNT(*) FROM game_sessions WHERE user_id = NEW.user_id) >= 15 THEN
+    RAISE EXCEPTION 'Session cap reached (15 games max per user)';
   END IF;
   RETURN NEW;
 END;

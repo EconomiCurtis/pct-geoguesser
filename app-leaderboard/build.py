@@ -218,12 +218,12 @@ body {{
   font-weight: 700;
 }}
 
-/* ── 90-day note ─────────────────────────────────────────── */
+/* ── Table descriptor (shown above the table) ───────────── */
 .window-note {{
   text-align: center;
   font-size: 12px;
   color: var(--muted);
-  margin-top: 20px;
+  margin-bottom: 16px;
 }}
 
 /* ── Desktop ─────────────────────────────────────────────── */
@@ -255,6 +255,8 @@ body {{
     <a href="/leaderboard/all-time/" class="tab {'tab-active' if not rolling else ''}">All-Time</a>
   </div>
 
+  {'<p class="window-note">Highest score per player in the last 90 days · max 2655.8 pts</p>' if rolling else '<p class="window-note">Highest score per player, all time · max 2655.8 pts</p>'}
+
   <!-- Loading -->
   <div id="state-loading" class="state-msg">
     <div class="spinner"></div><br>Loading scores…
@@ -276,14 +278,12 @@ body {{
       <tr>
         <th style="text-align:center">#</th>
         <th>Trail Name</th>
-        <th>Best Score</th>
+        <th>Best Score (pts)</th>
         <th>Perfects</th>
       </tr>
     </thead>
     <tbody id="lb-body"></tbody>
   </table>
-
-  {'<p class="window-note">Best score per player in the last 90 days</p>' if rolling else '<p class="window-note">Best score per player, all time</p>'}
 
 </div>
 
@@ -302,7 +302,7 @@ async function load() {{
     let query = sb
       .from('game_sessions')
       .select('user_id, total_score, perfect_count, photo_count, played_at, profiles(id, trail_name, pct_year)')
-      .order('total_score', {{ ascending: true }})
+      .order('total_score', {{ ascending: false }})
       .limit(500);
 
     {date_filter_js}
@@ -310,7 +310,7 @@ async function load() {{
     const {{ data, error }} = await query;
     if (error) throw error;
 
-    // Keep best score per user (already sorted ASC, so first hit = best)
+    // Keep best score per user (already sorted DESC, so first hit = best)
     const seen = new Set();
     const rows = [];
     for (const row of (data ?? [])) {{
@@ -349,7 +349,7 @@ async function load() {{
           <a href="/hiker/?id=${{profileId}}" class="hiker-link">${{name}}</a>
           ${{yearHtml}}
         </td>
-        <td class="score-cell">${{score}} mi</td>
+        <td class="score-cell">${{score}} pts</td>
         <td class="perf-cell${{allPerf ? ' all-perfect' : ''}}">${{perfects}}/${{total}}</td>
       `;
       tbody.appendChild(tr);

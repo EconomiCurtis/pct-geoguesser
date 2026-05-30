@@ -159,22 +159,79 @@ body {{
   opacity: .85;
 }}
 
-/* ── Stat chips ──────────────────────────────────────────── */
-.stat-chips {{
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 28px;
-}}
-.stat-chip {{
+/* ── Hero score card ─────────────────────────────────────── */
+.hero-card {{
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 16px;
-  min-width: 100px;
+  border: 1px solid var(--pct-teal);
+  border-radius: 14px;
+  padding: 24px 28px;
+  text-align: center;
+  margin-bottom: 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
 }}
-.stat-chip-label {{ font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }}
-.stat-chip-val   {{ font-size: 22px; font-weight: 800; color: var(--pct-teal); font-variant-numeric: tabular-nums; line-height: 1.3; }}
+.hero-score-label {{
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--muted);
+}}
+.hero-score {{
+  font-size: clamp(52px, 12vw, 80px);
+  font-weight: 800;
+  line-height: 1;
+  color: var(--pct-teal);
+  font-variant-numeric: tabular-nums;
+}}
+.hero-score-max {{
+  font-size: 14px;
+  color: var(--muted);
+  margin-top: -4px;
+}}
+.hero-callout {{
+  font-size: clamp(14px, 3.5vw, 17px);
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.4;
+  max-width: 480px;
+  margin-top: 4px;
+}}
+.hero-rankings {{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 4px;
+}}
+.ranking-badge {{
+  background: rgba(0,128,128,.15);
+  border: 1px solid rgba(0,128,128,.4);
+  color: var(--pct-teal);
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 4px 14px;
+}}
+.hero-support-stats {{
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  width: 100%;
+}}
+.support-stat {{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}}
+.support-stat-val   {{ font-size: 20px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }}
+.support-stat-label {{ font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }}
 
 /* ── Section heading ─────────────────────────────────────── */
 .section-heading {{
@@ -303,23 +360,26 @@ body {{
     </div>
   </div>
 
-  <!-- Stat chips -->
-  <div class="stat-chips">
-    <div class="stat-chip">
-      <div class="stat-chip-label">Games Played</div>
-      <div class="stat-chip-val" id="stat-games">—</div>
-    </div>
-    <div class="stat-chip">
-      <div class="stat-chip-label">Best Score</div>
-      <div class="stat-chip-val" id="stat-best">—</div>
-    </div>
-    <div class="stat-chip">
-      <div class="stat-chip-label">Avg Score</div>
-      <div class="stat-chip-val" id="stat-avg">—</div>
-    </div>
-    <div class="stat-chip">
-      <div class="stat-chip-label">Total Perfects</div>
-      <div class="stat-chip-val" id="stat-perfects">—</div>
+  <!-- Hero score card -->
+  <div class="hero-card">
+    <div class="hero-score-label">Best Score</div>
+    <div class="hero-score" id="hero-score">—</div>
+    <div class="hero-score-max" id="hero-score-max"></div>
+    <div class="hero-callout" id="hero-callout"></div>
+    <div class="hero-rankings" id="hero-rankings"></div>
+    <div class="hero-support-stats" id="hero-support-stats">
+      <div class="support-stat">
+        <div class="support-stat-val" id="stat-games">—</div>
+        <div class="support-stat-label">Games Played</div>
+      </div>
+      <div class="support-stat">
+        <div class="support-stat-val" id="stat-avg">—</div>
+        <div class="support-stat-label">Avg Score</div>
+      </div>
+      <div class="support-stat">
+        <div class="support-stat-val" id="stat-perfects">—</div>
+        <div class="support-stat-label">Total Perfects</div>
+      </div>
     </div>
   </div>
 
@@ -337,6 +397,42 @@ function showState(id) {{
     .forEach(s => {{ document.getElementById(s).hidden = (s !== id); }});
 }}
 
+const MAX_SCORE = 2655.8;
+
+function getCalloutText(name, bestScore) {{
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  if (bestScore >= 2400) return pick([
+    `It's almost like ${{name}} walked over every inch of the PCT.`,
+    `${{name}} may have built the whole PCT.`,
+    `${{name}} knows the PCT better than marmots look chonky.`,
+    `Pikas ask ${{name}} for directions.`,
+    `${{name}} knows the PCT almost as much as they smell.`,
+    `Okay, did ${{name}} hike the trail twice or something?`,
+    `${{name}} is so one with the trail, bears need to carry a ${{name}}-canister.`,
+  ]);
+  if (bestScore >= 2000) return pick([
+    `${{name}} really knows the PCT — that's elite trail knowledge.`,
+    `Wow, ${{name}} really knows the PCT.`,
+    `The mayor of Idyllwild would like to give ${{name}} a tasty treat.`,
+    `${{name}} knows the trail so well they pronounce "Seiad Valley" correctly.`,
+  ]);
+  if (bestScore >= 1500) return pick([
+    `Wow, ${{name}} knows their trail.`,
+    `${{name}} knows their way around the trail pretty darn well.`,
+    `Not bad, ${{name}}. The PCT recognizes one of its own.`,
+    `The trail gods give ${{name}} a polite nod.`,
+    `${{name}} is the legend every map wishes it had.`,
+    `Every good map has a legend to show you how far you've gone. My legend is ${{name}}.`,
+  ]);
+  if (bestScore >= 1000) return pick([
+    `${{name}} has some serious PCT knowledge.`,
+    `${{name}} knows enough to be dangerous near a resupply box.`,
+  ]);
+  if (bestScore >= 500)  return `${{name}} is getting to know the trail well!`;
+  if (bestScore >  0)    return `Every guess is a step closer to knowing the PCT. Keep exploring!`;
+  return `No scores yet — time to hit the trail!`;
+}}
+
 async function load() {{
   const params = new URLSearchParams(window.location.search);
   const userId = params.get('id');
@@ -344,8 +440,10 @@ async function load() {{
   if (!userId) {{ showState('state-notfound'); return; }}
 
   try {{
-    // Fetch profile and games in parallel
-    const [profileRes, gamesRes] = await Promise.all([
+    const ago90str = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+
+    // Fetch profile, games, and leaderboard data in parallel
+    const [profileRes, gamesRes, lb90Res, lbAllRes] = await Promise.all([
       sb.from('profiles')
         .select('id, trail_name, pct_year, about')
         .eq('id', userId)
@@ -353,7 +451,18 @@ async function load() {{
       sb.from('game_sessions')
         .select('id, total_score, perfect_count, photo_count, played_at')
         .eq('user_id', userId)
-        .order('played_at', {{ ascending: false }}),
+        .order('total_score', {{ ascending: false }}),
+      // 90-day leaderboard for ranking
+      sb.from('game_sessions')
+        .select('user_id, total_score')
+        .gte('played_at', ago90str)
+        .order('total_score', {{ ascending: false }})
+        .limit(500),
+      // All-time leaderboard for ranking
+      sb.from('game_sessions')
+        .select('user_id, total_score')
+        .order('total_score', {{ ascending: false }})
+        .limit(500),
     ]);
 
     if (profileRes.error) throw profileRes.error;
@@ -362,7 +471,21 @@ async function load() {{
     const profile = profileRes.data;
     const games   = gamesRes.data || [];
 
-    renderProfile(profile, games);
+    // Deduplicate leaderboard rows (best per user, first = best since sorted desc)
+    function dedup(rows) {{
+      const seen = new Set(), out = [];
+      for (const r of (rows || [])) {{
+        if (!seen.has(r.user_id)) {{ seen.add(r.user_id); out.push(r); }}
+        if (out.length >= 100) break;
+      }}
+      return out;
+    }}
+    const lb90  = dedup(lb90Res.data);
+    const lbAll = dedup(lbAllRes.data);
+    const rank90  = lb90.findIndex(r  => r.user_id === userId) + 1;   // 0 = not in top 100
+    const rankAll = lbAll.findIndex(r => r.user_id === userId) + 1;
+
+    renderProfile(profile, games, rank90, rankAll);
     showState('profile-content');
 
   }} catch (err) {{
@@ -371,15 +494,15 @@ async function load() {{
   }}
 }}
 
-function renderProfile(profile, games) {{
+function renderProfile(profile, games, rank90, rankAll) {{
   // Update page title
   const name = profile.trail_name || 'Anonymous Hiker';
   document.title = `${{name}} — PCT GeoGuesser`;
 
   // Profile card
   document.getElementById('profile-name').textContent = name;
-  document.getElementById('profile-avatar').textContent        = getAvatarEmoji(profile.trail_name);
-  document.getElementById('profile-avatar').style.background  = getAvatarColor(profile.id);
+  document.getElementById('profile-avatar').textContent       = getAvatarEmoji(profile.trail_name);
+  document.getElementById('profile-avatar').style.background = getAvatarColor(profile.id);
 
   if (profile.pct_year) {{
     document.getElementById('profile-year').textContent = `PCT ${{profile.pct_year}}`;
@@ -388,19 +511,30 @@ function renderProfile(profile, games) {{
     document.getElementById('profile-about').textContent = profile.about;
   }}
 
-  // Stat chips
   const n = games.length;
   document.getElementById('stat-games').textContent = n;
 
   if (n > 0) {{
-    const bestScore = Math.min(...games.map(g => g.total_score));
+    const bestScore = Math.max(...games.map(g => g.total_score));
     const avgScore  = games.reduce((s, g) => s + g.total_score, 0) / n;
     const totalPerf = games.reduce((s, g) => s + (g.perfect_count ?? 0), 0);
-    document.getElementById('stat-best').textContent     = bestScore.toFixed(1) + ' mi';
-    document.getElementById('stat-avg').textContent      = avgScore.toFixed(1)  + ' mi';
+
+    // Hero card
+    document.getElementById('hero-score').textContent     = bestScore.toFixed(1);
+    document.getElementById('hero-score-max').textContent = `/ ${{MAX_SCORE}}`;
+    document.getElementById('hero-callout').textContent   = getCalloutText(name, bestScore);
+
+    // Ranking badges
+    const rankingsEl = document.getElementById('hero-rankings');
+    rankingsEl.innerHTML = '';
+    if (rank90 > 0)  rankingsEl.innerHTML += `<span class="ranking-badge">#${{rank90}} · 90-Day Leaderboard</span>`;
+    if (rankAll > 0) rankingsEl.innerHTML += `<span class="ranking-badge">#${{rankAll}} · All-Time Leaderboard</span>`;
+
+    // Support stats
+    document.getElementById('stat-avg').textContent      = avgScore.toFixed(1);
     document.getElementById('stat-perfects').textContent = totalPerf;
 
-    // 90-day cutoff for rank badge
+    // 90-day cutoff for best-badge logic
     const ago90 = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
 
     // Build game history table
@@ -420,21 +554,19 @@ function renderProfile(profile, games) {{
     const tbody = document.createElement('tbody');
 
     games.forEach(g => {{
-      const isBest     = g.total_score === bestScore;
-      const isIn90Day  = new Date(g.played_at) >= ago90;
-      const allPerf    = g.perfect_count === g.photo_count;
-      const date       = new Date(g.played_at);
-      const dateStr    = date.toLocaleDateString('en-US', {{
+      const isBest  = g.total_score === bestScore;
+      const allPerf = g.perfect_count === g.photo_count;
+      const date    = new Date(g.played_at);
+      const dateStr = date.toLocaleDateString('en-US', {{
         month: 'short', day: 'numeric', year: 'numeric'
       }});
 
-      const bestHtml  = isBest    ? '<span class="best-badge">⭐ Best</span>'       : '';
-      const rankHtml  = isIn90Day && isBest ? '<span class="rank-badge">📊 Ranked</span>' : '';
+      const bestHtml = isBest ? '<span class="best-badge">⭐ Best</span>' : '';
 
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td class="td-date">${{dateStr}}</td>
-        <td class="td-score ${{isBest ? 'best' : ''}}">${{g.total_score.toFixed(1)}} mi${{bestHtml}}${{rankHtml}}</td>
+        <td class="td-score ${{isBest ? 'best' : ''}}">${{g.total_score.toFixed(1)}} pts${{bestHtml}}</td>
         <td class="td-perfs ${{allPerf ? 'all-perfect' : ''}}">${{g.perfect_count ?? 0}} / ${{g.photo_count ?? 10}}</td>
       `;
       tbody.appendChild(tr);
@@ -445,7 +577,9 @@ function renderProfile(profile, games) {{
     container.appendChild(wrap);
 
   }} else {{
-    document.getElementById('stat-best').textContent     = '—';
+    document.getElementById('hero-score').textContent     = '—';
+    document.getElementById('hero-score-max').textContent = '';
+    document.getElementById('hero-callout').textContent   = `No scores yet — time to hit the trail!`;
     document.getElementById('stat-avg').textContent      = '—';
     document.getElementById('stat-perfects').textContent = '—';
     document.getElementById('games-container').innerHTML =

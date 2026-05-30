@@ -46,6 +46,8 @@ all_photos_json = json.dumps(
             "mile":      float(r["mile"]),
             "direction": r["direction"],
             "section":   r["section"],
+            "date":      r.get("date", "") or "",
+            "photo_by":  r.get("photo_by", "") or "",
             "version":   r["version"],
             "url":       r["url"],
         }
@@ -342,7 +344,7 @@ td.val-muted {{ color: var(--muted); }}
           <tr>
             <th style="width:72px">Photo</th>
             <th class="sortable sort-active" id="th-mile"          data-arrow="↑" onclick="setSort('mile')">Mile</th>
-            <th>Section</th><th>Dir</th><th>Pool</th>
+            <th>Section</th><th>Dir</th><th>Date</th><th>Photo By</th><th>Pool</th>
             <th class="sortable" id="th-appearances"  onclick="setSort('appearances')">Shown</th>
             <th class="sortable" id="th-n_guesses"    onclick="setSort('n_guesses')">N</th>
             <th class="sortable" id="th-avg_error"    onclick="setSort('avg_error')">Mean Error</th>
@@ -508,7 +510,7 @@ function renderGames(games) {{
     tr.innerHTML = `
       <td>${{nameHtml}}</td>
       <td style="color:var(--muted)">${{p?.pct_year ?? '—'}}</td>
-      <td style="font-variant-numeric:tabular-nums;font-weight:600">${{g.total_score}}</td>
+      <td style="font-variant-numeric:tabular-nums;font-weight:600">${{Number(g.total_score).toFixed(1)}}</td>
       <td style="color:var(--muted)">${{g.perfect_count}} / ${{g.photo_count}}</td>
       <td style="color:var(--muted);font-size:12px">${{dateStr}}</td>`;
     tbody.appendChild(tr);
@@ -560,12 +562,16 @@ function renderStats() {{
       else meanClass = 'val-bad';
     }}
     const tr = document.createElement('tr');
+    const lbMeta    = `Mile ${{p.mile}} · ${{p.section}} · ${{p.direction}}${{p.date ? ' · ' + p.date : ''}}`;
+    const lbCaption = p.photo_by ? lbMeta + '|📷 ' + p.photo_by : lbMeta;
     tr.innerHTML = `
       <td class="td-thumb"><img src="${{p.url}}" alt="Mile ${{p.mile}}"
-           onclick="openLb('${{p.url}}', 'Mile ${{p.mile}} · ${{p.section}} · ${{p.direction}}')" loading="lazy"></td>
+           onclick="openLb('${{p.url}}', '${{lbCaption.replace(/'/g,'&#39;')}}')" loading="lazy"></td>
       <td style="font-weight:700;font-variant-numeric:tabular-nums">${{p.mile}}</td>
       <td style="color:var(--muted);font-size:12px">${{p.section}}</td>
       <td style="color:var(--muted)">${{p.direction}}</td>
+      <td style="color:var(--muted);font-size:12px">${{p.date || '—'}}</td>
+      <td style="color:var(--muted);font-size:12px;font-style:italic">${{p.photo_by || ''}}</td>
       <td><span class="badge ${{p.version==='v1-demo'?'badge-v1':'badge-v2'}}">${{p.version==='v1-demo'?'v1':'v2'}}</span></td>
       <td class="val-muted">${{p.appearances}}</td>
       <td class="val-muted">${{p.n_guesses}}</td>
@@ -813,9 +819,11 @@ function cancelEditName(userId, originalName) {{
 
 // ── Lightbox ──────────────────────────────────────────────
 function openLb(url, cap) {{
-  document.getElementById('lb-img').src         = url;
-  document.getElementById('lb-cap').textContent = cap;
-  document.getElementById('lb').style.display   = 'flex';
+  document.getElementById('lb-img').src = url;
+  const [meta, credit] = cap.split('|');
+  document.getElementById('lb-cap').innerHTML =
+    credit ? meta + '<br><span style="opacity:.7">' + credit + '</span>' : meta;
+  document.getElementById('lb').style.display = 'flex';
 }}
 </script>
 </body>

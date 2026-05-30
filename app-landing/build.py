@@ -7,9 +7,8 @@
 # To rebuild after editing:
 #   python3 app-landing/build.py
 #
-# To deploy (after also rebuilding the practice game):
-#   cp app-landing/index.html          deploy/index.html
-#   cp app-game-v1-testing/index.html  deploy/practice/index.html
+# To deploy:
+#   bash build.sh
 #   npx wrangler pages deploy deploy/ --project-name=pct-geoguesser
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -222,15 +221,15 @@ h1 span {{ color: var(--pct-teal); }}
       <li><span>Enter the PCT (NoBo) mile you think matches the location (<a href="https://pcta.maps.arcgis.com/apps/instant/sidebar/index.html?appid=3b1817932adf42009f30b6b38828212e" target="_blank" rel="noopener">see PCTA mile markers</a>)</span></li>
       <li>You'll have <strong>30 seconds</strong> to guess</li>
     </ul>
-    <h3>Scoring (lower is better)</h3>
+    <h3>Scoring (top score wins)</h3>
     <ul>
-      <li>Your score is how many miles off your guesses are</li>
-      <li>Within 3 miles = perfect score for that photo (0 points)</li>
-      <li><strong>Lowest total score wins</strong></li>
+      <li>The closer your guesses are to the correct mile, the better your score.</li>
+      <li>Within <strong>3 miles</strong> = perfect score</li>
+      <li>Top score possible is <strong>2,655.8</strong></li>
     </ul>
     <h3>Tips</h3>
     <ul>
-      <li>Photos can come from anywhere along the 2,655-mile trail.</li>
+      <li>Photos can come from anywhere along the full trail.</li>
       <li>Pay attention to the date &amp; hiking direction. Not every photo was taken during summer.</li>
     </ul>
   </div>

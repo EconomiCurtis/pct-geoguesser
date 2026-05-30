@@ -33,8 +33,8 @@ app-explore/
 # ── Generated HTML build artifacts ───────────────────────────────────────────
 # Regenerated locally by each app-*/build.py, then deployed via wrangler.
 app-landing/index.html
-app-game-v1-testing/index.html
-app-game-v2/index.html
+app-game/practice/index.html
+app-game/scored/index.html
 app-leaderboard/index.html
 app-leaderboard/all-time/
 app-hiker/index.html

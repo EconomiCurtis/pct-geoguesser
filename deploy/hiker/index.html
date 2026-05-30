@@ -1,30 +1,4 @@
-# ──────────────────────────────────────────────────────────────────────────────
-# build.py  —  PCT GeoGuesser  (hiker profile page)
-#
-# Generates a single self-contained index.html deployed at /hiker/.
-# The page reads ?id=<uuid> from the URL, fetches the player's profile
-# and game history from Supabase, and displays their stats.
-#
-# URL format: https://pct-geoguesser.economicurtis.com/hiker/?id=<full-uuid>
-# The leaderboard links to this page using the full Supabase profile UUID.
-#
-# To rebuild:
-#   python3 app-hiker/build.py
-#
-# To deploy:
-#   cp app-hiker/index.html deploy/hiker/index.html
-#   npx wrangler pages deploy deploy/ --project-name=pct-geoguesser
-# ──────────────────────────────────────────────────────────────────────────────
-
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'misc'))
-from supabase_config import SUPABASE_URL, SUPABASE_ANON_KEY
-
-HERE     = os.path.dirname(os.path.abspath(__file__))
-OUT_PATH = os.path.join(HERE, "index.html")
-MISC_BASE_URL = "https://pct-geoguesser.economicurtis.com/misc"
-
-html = f"""<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -36,22 +10,22 @@ html = f"""<!DOCTYPE html>
 <meta property="og:url"         content="https://pct-geoguesser.economicurtis.com/hiker/">
 <meta property="og:title"       content="PCT GeoGuesser">
 <meta property="og:description" content="How well do you know the PCT?">
-<meta property="og:image"       content="{MISC_BASE_URL}/preview.png">
+<meta property="og:image"       content="https://pct-geoguesser.economicurtis.com/misc/preview.png">
 <meta name="twitter:card"        content="summary_large_image">
 <meta name="twitter:title"       content="PCT GeoGuesser">
 <meta name="twitter:description" content="How well do you know the PCT?">
-<meta name="twitter:image"       content="{MISC_BASE_URL}/preview.png">
+<meta name="twitter:image"       content="https://pct-geoguesser.economicurtis.com/misc/preview.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="icon"             type="image/png" href="{MISC_BASE_URL}/pct-geoguesser-favicon.png">
-<link rel="apple-touch-icon"                  href="{MISC_BASE_URL}/pct-geoguesser-favicon.png">
+<link rel="icon"             type="image/png" href="https://pct-geoguesser.economicurtis.com/misc/pct-geoguesser-favicon.png">
+<link rel="apple-touch-icon"                  href="https://pct-geoguesser.economicurtis.com/misc/pct-geoguesser-favicon.png">
 <meta name="theme-color" content="#0d1117">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
-*, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-:root {{
+:root {
   --bg:        #0d1117;
   --surface:   #161b22;
   --surface2:  #21262d;
@@ -62,20 +36,20 @@ html = f"""<!DOCTYPE html>
   --pct-teal:  #008080;
   --pct-white: #FFFFFF;
   --gold:      #f59e0b;
-}}
+}
 
-body {{
+body {
   font-family: 'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100dvh;
-}}
+}
 
 /* ── Top nav ─────────────────────────────────────────────── */
-.top-nav-bar {{
+.top-nav-bar {
   border-bottom: 1px solid var(--border);
-}}
-.top-nav {{
+}
+.top-nav {
   padding: 14px 20px;
   display: flex;
   align-items: center;
@@ -84,40 +58,40 @@ body {{
   max-width: 760px;
   margin: 0 auto;
   width: 100%;
-}}
-.back-link {{
+}
+.back-link {
   color: var(--pct-teal);
   text-decoration: none;
   font-size: 14px;
   font-weight: 600;
-}}
-.back-link:hover {{ text-decoration: underline; }}
-.nav-right {{
+}
+.back-link:hover { text-decoration: underline; }
+.nav-right {
   display: flex;
   gap: 16px;
   align-items: center;
-}}
-.nav-right a {{
+}
+.nav-right a {
   color: var(--muted);
   text-decoration: none;
   font-size: 13px;
-}}
-.nav-right a:hover {{ color: var(--text); }}
+}
+.nav-right a:hover { color: var(--text); }
 
 /* ── Page ────────────────────────────────────────────────── */
-.page {{
+.page {
   max-width: 760px;
   margin: 0 auto;
   padding: 32px 20px 60px;
-}}
+}
 
 /* ── State messages ──────────────────────────────────────── */
-.state-msg {{
+.state-msg {
   text-align: center;
   padding: 80px 20px;
   color: var(--muted);
-}}
-.spinner {{
+}
+.spinner {
   display: inline-block;
   width: 32px; height: 32px;
   border: 3px solid var(--border);
@@ -125,19 +99,19 @@ body {{
   border-radius: 50%;
   animation: spin .8s linear infinite;
   margin-bottom: 16px;
-}}
-@keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* ── Profile card ────────────────────────────────────────── */
-.profile-card {{
+.profile-card {
   display: flex;
   align-items: flex-start;
   gap: 20px;
   margin-bottom: 32px;
   padding-bottom: 28px;
   border-bottom: 1px solid var(--border);
-}}
-.profile-avatar {{
+}
+.profile-avatar {
   width: 64px; height: 64px;
   border-radius: 50%;
   background: var(--pct-green); /* overridden by JS with user-specific color */
@@ -145,32 +119,32 @@ body {{
   font-size: 28px;
   flex-shrink: 0;
   border: 2px solid var(--border);
-}}
-.profile-info {{
+}
+.profile-info {
   flex: 1;
   min-width: 0;
-}}
-.profile-name {{
+}
+.profile-name {
   font-size: clamp(22px, 5vw, 32px);
   font-weight: 800;
   color: var(--pct-teal);
   line-height: 1.1;
   margin-bottom: 4px;
-}}
-.profile-year {{
+}
+.profile-year {
   font-size: 14px;
   color: var(--muted);
   margin-bottom: 10px;
-}}
-.profile-about {{
+}
+.profile-about {
   font-size: 14px;
   color: var(--text);
   line-height: 1.6;
   opacity: .85;
-}}
+}
 
 /* ── Hero score card ─────────────────────────────────────── */
-.hero-card {{
+.hero-card {
   background: var(--surface);
   border: 1px solid var(--pct-teal);
   border-radius: 14px;
@@ -181,41 +155,41 @@ body {{
   flex-direction: column;
   align-items: center;
   gap: 8px;
-}}
-.hero-score-label {{
+}
+.hero-score-label {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: .12em;
   color: var(--muted);
-}}
-.hero-score {{
+}
+.hero-score {
   font-size: clamp(52px, 12vw, 80px);
   font-weight: 800;
   line-height: 1;
   color: var(--pct-teal);
   font-variant-numeric: tabular-nums;
-}}
-.hero-score-max {{
+}
+.hero-score-max {
   font-size: 14px;
   color: var(--muted);
   margin-top: -4px;
-}}
-.hero-callout {{
+}
+.hero-callout {
   font-size: clamp(14px, 3.5vw, 17px);
   font-weight: 600;
   color: var(--text);
   line-height: 1.4;
   max-width: 480px;
   margin-top: 4px;
-}}
-.hero-rankings {{
+}
+.hero-rankings {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   justify-content: center;
   margin-top: 4px;
-}}
-.ranking-badge {{
+}
+.ranking-badge {
   background: rgba(0,128,128,.15);
   border: 1px solid rgba(0,128,128,.4);
   color: var(--pct-teal);
@@ -223,8 +197,8 @@ body {{
   font-size: 13px;
   font-weight: 700;
   padding: 4px 14px;
-}}
-.hero-support-stats {{
+}
+.hero-support-stats {
   display: flex;
   gap: 20px;
   justify-content: center;
@@ -233,60 +207,60 @@ body {{
   padding-top: 14px;
   border-top: 1px solid var(--border);
   width: 100%;
-}}
-.support-stat {{
+}
+.support-stat {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
-}}
-.support-stat-val   {{ font-size: 20px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }}
-.support-stat-label {{ font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }}
+}
+.support-stat-val   { font-size: 20px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
+.support-stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 
 /* ── Section heading ─────────────────────────────────────── */
-.section-heading {{
+.section-heading {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: .1em;
   color: var(--pct-teal);
   margin-bottom: 12px;
-}}
+}
 
 /* ── Games table ─────────────────────────────────────────── */
-.table-wrap {{ overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }}
-.games-table {{
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+.games-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
-}}
-.games-table th {{
+}
+.games-table th {
   padding: 8px 14px;
   text-align: left;
   font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
   color: var(--muted); border-bottom: 1px solid var(--border);
   background: var(--surface); white-space: nowrap;
-}}
-.games-table td {{
+}
+.games-table td {
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
   white-space: nowrap;
-}}
-.games-table tr:last-child td {{ border-bottom: none; }}
-.games-table tbody tr:hover {{ background: var(--surface2); }}
+}
+.games-table tr:last-child td { border-bottom: none; }
+.games-table tbody tr:hover { background: var(--surface2); }
 
-.td-score {{
+.td-score {
   font-size: 15px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-}}
-.td-score.best {{
+}
+.td-score.best {
   color: var(--pct-teal);
-}}
-.td-date   {{ color: var(--muted); font-size: 12px; }}
-.td-perfs  {{ color: var(--muted); font-size: 13px; }}
-.td-perfs.all-perfect {{ color: var(--pct-teal); font-weight: 700; }}
-.best-badge {{
+}
+.td-date   { color: var(--muted); font-size: 12px; }
+.td-perfs  { color: var(--muted); font-size: 13px; }
+.td-perfs.all-perfect { color: var(--pct-teal); font-weight: 700; }
+.best-badge {
   display: inline-block;
   background: rgba(245,158,11,.15);
   border: 1px solid rgba(245,158,11,.4);
@@ -295,8 +269,8 @@ body {{
   font-size: 10px; font-weight: 700; letter-spacing: .05em;
   padding: 2px 7px; margin-left: 6px;
   vertical-align: middle;
-}}
-.rank-badge {{
+}
+.rank-badge {
   display: inline-block;
   background: rgba(0,128,128,.15);
   border: 1px solid rgba(0,128,128,.4);
@@ -305,10 +279,10 @@ body {{
   font-size: 10px; font-weight: 700; letter-spacing: .05em;
   padding: 2px 7px; margin-left: 4px;
   vertical-align: middle;
-}}
+}
 
 /* ── No games state ──────────────────────────────────────── */
-.no-games {{
+.no-games {
   padding: 32px;
   text-align: center;
   color: var(--muted);
@@ -316,16 +290,16 @@ body {{
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
-}}
+}
 
 /* ── Desktop ─────────────────────────────────────────────── */
-@media (min-width: 600px) {{
-  .profile-avatar {{ width: 80px; height: 80px; font-size: 36px; }}
-  .stat-chip-val {{ font-size: 26px; }}
-  .games-table {{ font-size: 14px; }}
-  .games-table th {{ font-size: 11px; padding: 10px 16px; }}
-  .games-table td {{ padding: 12px 16px; }}
-}}
+@media (min-width: 600px) {
+  .profile-avatar { width: 80px; height: 80px; font-size: 36px; }
+  .stat-chip-val { font-size: 26px; }
+  .games-table { font-size: 14px; }
+  .games-table th { font-size: 11px; padding: 10px 16px; }
+  .games-table td { padding: 12px 16px; }
+}
 </style>
 </head>
 <body>
@@ -400,50 +374,50 @@ body {{
 </div>
 
 <script>
-const sb = supabase.createClient('{SUPABASE_URL}', '{SUPABASE_ANON_KEY}');
+const sb = supabase.createClient('https://alrjrplclssjgpxqxzvk.supabase.co', 'sb_publishable_LxFCbmdg9ZlhDbr2np_ufQ_RcWTgcS8');
 
-function showState(id) {{
+function showState(id) {
   ['state-loading','state-notfound','state-error','profile-content']
-    .forEach(s => {{ document.getElementById(s).hidden = (s !== id); }});
-}}
+    .forEach(s => { document.getElementById(s).hidden = (s !== id); });
+}
 
 const MAX_SCORE = 2655.8;
 
-function getCalloutText(name, bestScore) {{
+function getCalloutText(name, bestScore) {
   if (bestScore <= 0) return `No scores yet — time to hit the trail!`;
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
   return pick([
-    `It's almost like ${{name}} walked over every inch of the PCT.`,
-    `${{name}} may have built the whole PCT.`,
-    `${{name}} knows the PCT better than marmots look chonky.`,
-    `Pikas ask ${{name}} for directions.`,
-    `${{name}} knows the PCT almost as much as they smell.`,
-    `Okay, did ${{name}} hike the trail twice or something?`,
-    `${{name}} is so one with the trail, bears need to carry a ${{name}}-canister.`,
-    `${{name}} really knows the PCT — that's elite trail knowledge.`,
-    `Wow, ${{name}} really knows the PCT.`,
-    `The mayor of Idyllwild would like to give ${{name}} a tasty treat.`,
-    `${{name}} knows the trail so well they pronounce "Seiad Valley" correctly.`,
-    `Wow, ${{name}} knows their trail.`,
-    `${{name}} knows their way around the trail pretty darn well.`,
-    `Not bad, ${{name}}. The PCT recognizes one of its own.`,
-    `The trail gods give ${{name}} a polite nod.`,
-    `${{name}} is the legend every map wishes it had.`,
-    `Every good map has a legend to show you how far you've gone. My legend is ${{name}}.`,
-    `${{name}} has some serious PCT knowledge.`,
-    `${{name}} knows enough to be dangerous near a resupply box.`,
-    `${{name}} is getting to know the trail well!`,
+    `It's almost like ${name} walked over every inch of the PCT.`,
+    `${name} may have built the whole PCT.`,
+    `${name} knows the PCT better than marmots look chonky.`,
+    `Pikas ask ${name} for directions.`,
+    `${name} knows the PCT almost as much as they smell.`,
+    `Okay, did ${name} hike the trail twice or something?`,
+    `${name} is so one with the trail, bears need to carry a ${name}-canister.`,
+    `${name} really knows the PCT — that's elite trail knowledge.`,
+    `Wow, ${name} really knows the PCT.`,
+    `The mayor of Idyllwild would like to give ${name} a tasty treat.`,
+    `${name} knows the trail so well they pronounce "Seiad Valley" correctly.`,
+    `Wow, ${name} knows their trail.`,
+    `${name} knows their way around the trail pretty darn well.`,
+    `Not bad, ${name}. The PCT recognizes one of its own.`,
+    `The trail gods give ${name} a polite nod.`,
+    `${name} is the legend every map wishes it had.`,
+    `Every good map has a legend to show you how far you've gone. My legend is ${name}.`,
+    `${name} has some serious PCT knowledge.`,
+    `${name} knows enough to be dangerous near a resupply box.`,
+    `${name} is getting to know the trail well!`,
     `Every guess is a step closer to knowing the PCT. Keep exploring!`,
   ]);
-}}
+}
 
-async function load() {{
+async function load() {
   const params = new URLSearchParams(window.location.search);
   const userId = params.get('id');
 
-  if (!userId) {{ showState('state-notfound'); return; }}
+  if (!userId) { showState('state-notfound'); return; }
 
-  try {{
+  try {
     const ago90str = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
 
     // Fetch profile, games, and leaderboard data in parallel
@@ -455,35 +429,35 @@ async function load() {{
       sb.from('game_sessions')
         .select('id, total_score, perfect_count, photo_count, played_at')
         .eq('user_id', userId)
-        .order('total_score', {{ ascending: false }}),
+        .order('total_score', { ascending: false }),
       // 90-day leaderboard for ranking
       sb.from('game_sessions')
         .select('user_id, total_score')
         .gte('played_at', ago90str)
-        .order('total_score', {{ ascending: false }})
+        .order('total_score', { ascending: false })
         .limit(500),
       // All-time leaderboard for ranking
       sb.from('game_sessions')
         .select('user_id, total_score')
-        .order('total_score', {{ ascending: false }})
+        .order('total_score', { ascending: false })
         .limit(500),
     ]);
 
     if (profileRes.error) throw profileRes.error;
-    if (!profileRes.data) {{ showState('state-notfound'); return; }}
+    if (!profileRes.data) { showState('state-notfound'); return; }
 
     const profile = profileRes.data;
     const games   = gamesRes.data || [];
 
     // Deduplicate leaderboard rows (best per user, first = best since sorted desc)
-    function dedup(rows) {{
+    function dedup(rows) {
       const seen = new Set(), out = [];
-      for (const r of (rows || [])) {{
-        if (!seen.has(r.user_id)) {{ seen.add(r.user_id); out.push(r); }}
+      for (const r of (rows || [])) {
+        if (!seen.has(r.user_id)) { seen.add(r.user_id); out.push(r); }
         if (out.length >= 100) break;
-      }}
+      }
       return out;
-    }}
+    }
     const lb90  = dedup(lb90Res.data);
     const lbAll = dedup(lbAllRes.data);
     const rank90  = lb90.findIndex(r  => r.user_id === userId) + 1;   // 0 = not in top 100
@@ -492,47 +466,47 @@ async function load() {{
     renderProfile(profile, games, rank90, rankAll);
     showState('profile-content');
 
-  }} catch (err) {{
+  } catch (err) {
     document.getElementById('error-msg').textContent = err.message || 'Failed to load profile.';
     showState('state-error');
-  }}
-}}
+  }
+}
 
-function renderProfile(profile, games, rank90, rankAll) {{
+function renderProfile(profile, games, rank90, rankAll) {
   // Update page title
   const name = profile.trail_name || 'Anonymous Hiker';
-  document.title = `${{name}} — PCT GeoGuesser`;
+  document.title = `${name} — PCT GeoGuesser`;
 
   // Profile card
   document.getElementById('profile-name').textContent = name;
   document.getElementById('profile-avatar').textContent       = getAvatarEmoji(profile.trail_name);
   document.getElementById('profile-avatar').style.background = getAvatarColor(profile.id);
 
-  if (profile.pct_year) {{
-    document.getElementById('profile-year').textContent = `PCT ${{profile.pct_year}}`;
-  }}
-  if (profile.about) {{
+  if (profile.pct_year) {
+    document.getElementById('profile-year').textContent = `PCT ${profile.pct_year}`;
+  }
+  if (profile.about) {
     document.getElementById('profile-about').textContent = profile.about;
-  }}
+  }
 
   const n = games.length;
   document.getElementById('stat-games').textContent = n;
 
-  if (n > 0) {{
+  if (n > 0) {
     const bestScore = Math.max(...games.map(g => g.total_score));
     const avgScore  = games.reduce((s, g) => s + g.total_score, 0) / n;
     const totalPerf = games.reduce((s, g) => s + (g.perfect_count ?? 0), 0);
 
     // Hero card
     document.getElementById('hero-score').textContent     = bestScore.toFixed(1);
-    document.getElementById('hero-score-max').textContent = `/ ${{MAX_SCORE}}`;
+    document.getElementById('hero-score-max').textContent = `/ ${MAX_SCORE}`;
     document.getElementById('hero-callout').textContent   = getCalloutText(name, bestScore);
 
     // Ranking badges
     const rankingsEl = document.getElementById('hero-rankings');
     rankingsEl.innerHTML = '';
-    if (rank90 > 0)  rankingsEl.innerHTML += `<span class="ranking-badge">#${{rank90}} · 90-Day Leaderboard</span>`;
-    if (rankAll > 0) rankingsEl.innerHTML += `<span class="ranking-badge">#${{rankAll}} · All-Time Leaderboard</span>`;
+    if (rank90 > 0)  rankingsEl.innerHTML += `<span class="ranking-badge">#${rank90} · 90-Day Leaderboard</span>`;
+    if (rankAll > 0) rankingsEl.innerHTML += `<span class="ranking-badge">#${rankAll} · All-Time Leaderboard</span>`;
 
     // Support stats
     document.getElementById('stat-avg').textContent      = avgScore.toFixed(1);
@@ -557,30 +531,30 @@ function renderProfile(profile, games, rank90, rankAll) {{
       </thead>`;
     const tbody = document.createElement('tbody');
 
-    games.forEach(g => {{
+    games.forEach(g => {
       const isBest  = g.total_score === bestScore;
       const allPerf = g.perfect_count === g.photo_count;
       const date    = new Date(g.played_at);
-      const dateStr = date.toLocaleDateString('en-US', {{
+      const dateStr = date.toLocaleDateString('en-US', {
         month: 'short', day: 'numeric', year: 'numeric'
-      }});
+      });
 
       const bestHtml = isBest ? '<span class="best-badge">⭐ Best</span>' : '';
 
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td class="td-date">${{dateStr}}</td>
-        <td class="td-score ${{isBest ? 'best' : ''}}">${{g.total_score.toFixed(1)}} pts${{bestHtml}}</td>
-        <td class="td-perfs ${{allPerf ? 'all-perfect' : ''}}">${{g.perfect_count ?? 0}} / ${{g.photo_count ?? 10}}</td>
+        <td class="td-date">${dateStr}</td>
+        <td class="td-score ${isBest ? 'best' : ''}">${g.total_score.toFixed(1)} pts${bestHtml}</td>
+        <td class="td-perfs ${allPerf ? 'all-perfect' : ''}">${g.perfect_count ?? 0} / ${g.photo_count ?? 10}</td>
       `;
       tbody.appendChild(tr);
-    }});
+    });
 
     table.appendChild(tbody);
     wrap.appendChild(table);
     container.appendChild(wrap);
 
-  }} else {{
+  } else {
     document.getElementById('hero-score').textContent     = '—';
     document.getElementById('hero-score-max').textContent = '';
     document.getElementById('hero-callout').textContent   = `No scores yet — time to hit the trail!`;
@@ -588,32 +562,27 @@ function renderProfile(profile, games, rank90, rankAll) {{
     document.getElementById('stat-perfects').textContent = '—';
     document.getElementById('games-container').innerHTML =
       '<div class="no-games">No scored games yet.</div>';
-  }}
-}}
+  }
+}
 
-function getAvatarEmoji(name) {{
+function getAvatarEmoji(name) {
   // Deterministic emoji based on trail name — 10 trail-themed options
   const emojis = ['🏕','🌲','⛰','🏔','🌄','🎒','🥾','🦅','🌿','🏞'];
   if (!name) return emojis[0];
   const code = [...name].reduce((a, c) => a + c.charCodeAt(0), 0);
   return emojis[code % emojis.length];
-}}
+}
 
-function getAvatarColor(uuid) {{
+function getAvatarColor(uuid) {
   // Deterministic background color seeded by the user's UUID.
   // Golden-angle hue spread (×137) gives even distribution across the colour wheel.
   // HSL 62% saturation, 38% lightness → vibrant but not garish; readable on dark bg.
   const code = [...(uuid || '')].reduce((a, c) => a + c.charCodeAt(0), 0);
   const hue  = (code * 137) % 360;
-  return `hsl(${{hue}}, 62%, 38%)`;
-}}
+  return `hsl(${hue}, 62%, 38%)`;
+}
 
 load();
 </script>
 </body>
-</html>"""
-
-with open(OUT_PATH, "w") as f:
-    f.write(html)
-
-print(f"Built {OUT_PATH}")
+</html>

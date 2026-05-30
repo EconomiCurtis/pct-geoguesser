@@ -22,7 +22,7 @@ CREATE TABLE profiles (
 CREATE TABLE game_sessions (
   id            UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id       UUID    NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  total_score   INTEGER NOT NULL,    -- sum of per-round errors in miles (lower = better)
+  total_score   NUMERIC NOT NULL,    -- total game score, higher = better; max 2655.8 (one pt per PCT mile)
   perfect_count INTEGER DEFAULT 0,  -- rounds where error ≤ 3 miles
   photo_count   INTEGER DEFAULT 10,
   played_at     TIMESTAMPTZ DEFAULT now()
@@ -41,7 +41,7 @@ CREATE TABLE game_guesses (
   photo_id     TEXT  NOT NULL,     -- 5-letter ID from photos.csv
   true_mile    FLOAT NOT NULL,
   guessed_mile FLOAT,              -- NULL if player timed out
-  score        INTEGER NOT NULL,
+  score        NUMERIC NOT NULL,
   timed_out    BOOLEAN DEFAULT FALSE
 );
 
@@ -77,6 +77,17 @@ CREATE TABLE photo_stats (
 );
 
 
+-- ── Block 4b: Site settings ──────────────────────────────────────────────────
+-- Key/value admin toggles (e.g. show_rolling_leaderboard). Public read so the
+-- leaderboard page can check settings without auth; writes via admin_set_setting().
+
+CREATE TABLE site_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+
 -- ── Block 5: Row Level Security ──────────────────────────────────────────────
 -- The anon key is embedded in public HTML. RLS ensures it can only READ public
 -- data, and authenticated users can only write their own rows.
@@ -85,6 +96,7 @@ ALTER TABLE profiles      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE game_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE game_guesses  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE photo_stats   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE site_settings ENABLE ROW LEVEL SECURITY;
 
 -- profiles
 CREATE POLICY "profiles_read"   ON profiles FOR SELECT USING (true);
@@ -99,6 +111,9 @@ CREATE POLICY "sessions_insert" ON game_sessions FOR INSERT WITH CHECK (auth.uid
 -- game_guesses and photo_stats: public read only; all writes go through submit_game()
 CREATE POLICY "guesses_read"     ON game_guesses FOR SELECT USING (true);
 CREATE POLICY "photo_stats_read" ON photo_stats  FOR SELECT USING (true);
+
+-- site_settings: public read; writes go through admin_set_setting() RPC
+CREATE POLICY "site_settings_read" ON site_settings FOR SELECT USING (true);
 
 
 -- ── Block 6: Triggers ────────────────────────────────────────────────────────
@@ -127,8 +142,8 @@ CREATE TRIGGER game_rate_limit
 CREATE OR REPLACE FUNCTION validate_game_score()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
-  -- 10 rounds × 2655.5 mi max trail = 26,555 absolute worst-case total
-  IF NEW.total_score   < 0 OR NEW.total_score   > 26555           THEN
+  -- max real game total is ~2655.8; allow margin (incl. trail into Canada)
+  IF NEW.total_score   < 0 OR NEW.total_score   > 2680            THEN
     RAISE EXCEPTION 'Invalid total_score';
   END IF;
   IF NEW.perfect_count < 0 OR NEW.perfect_count > NEW.photo_count THEN
@@ -143,7 +158,7 @@ CREATE TRIGGER validate_score
   FOR EACH ROW EXECUTE FUNCTION validate_game_score();
 
 
--- 6c. Session cap: hard limit of 10 saved games per user
+-- 6c. Session cap: hard limit of 15 saved games per user
 CREATE OR REPLACE FUNCTION enforce_session_cap()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
@@ -179,7 +194,7 @@ CREATE TRIGGER session_cap
 
 CREATE OR REPLACE FUNCTION submit_game(
   p_user_id       UUID,
-  p_total_score   INTEGER,
+  p_total_score   NUMERIC,
   p_perfect_count INTEGER,
   p_guesses       JSONB    -- [{photo_id, true_mile, guessed_mile, score, timed_out}, ...]
 ) RETURNS UUID LANGUAGE plpgsql SECURITY DEFINER AS $$
@@ -215,7 +230,7 @@ BEGIN
       v_guess->>'photo_id',
       (v_guess->>'true_mile')::FLOAT,
       NULLIF(v_guess->>'guessed_mile', 'null')::FLOAT,
-      (v_guess->>'score')::INTEGER,
+      (v_guess->>'score')::NUMERIC,
       (v_guess->>'timed_out')::BOOLEAN
     );
 

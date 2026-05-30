@@ -1,31 +1,4 @@
-# ──────────────────────────────────────────────────────────────────────────────
-# build.py  —  PCT GeoGuesser  (leaderboard)
-#
-# Generates a single leaderboard page:
-#   app-leaderboard/index.html  →  deployed at /leaderboard/
-#
-# Default view: All-Time (highest score per player, ever).
-# 90-Day tab: shown only when the admin enables it via Site Settings.
-#   The page fetches `site_settings` where key='show_rolling_leaderboard' on
-#   load. If value='true', a 90-Day tab appears alongside All-Time. Otherwise
-#   only All-Time is shown, with no tab bar.
-#
-# To rebuild:
-#   python3 app-leaderboard/build.py
-#
-# To deploy:
-#   bash build.sh
-# ──────────────────────────────────────────────────────────────────────────────
-
-import os
-sys = __import__('sys')
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'misc'))
-from supabase_config import SUPABASE_URL, SUPABASE_ANON_KEY
-
-HERE         = os.path.dirname(os.path.abspath(__file__))
-MISC_BASE_URL = "https://pct-geoguesser.economicurtis.com/misc"
-
-html = f"""<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -37,22 +10,22 @@ html = f"""<!DOCTYPE html>
 <meta property="og:url"         content="https://pct-geoguesser.economicurtis.com/leaderboard/">
 <meta property="og:title"       content="PCT GeoGuesser">
 <meta property="og:description" content="How well do you know the PCT?">
-<meta property="og:image"       content="{MISC_BASE_URL}/preview.png">
+<meta property="og:image"       content="https://pct-geoguesser.economicurtis.com/misc/preview.png">
 <meta name="twitter:card"        content="summary_large_image">
 <meta name="twitter:title"       content="PCT GeoGuesser">
 <meta name="twitter:description" content="How well do you know the PCT?">
-<meta name="twitter:image"       content="{MISC_BASE_URL}/preview.png">
+<meta name="twitter:image"       content="https://pct-geoguesser.economicurtis.com/misc/preview.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="icon" type="image/png" href="{MISC_BASE_URL}/pct-geoguesser-favicon.png">
-<link rel="apple-touch-icon" href="{MISC_BASE_URL}/pct-geoguesser-favicon.png">
+<link rel="icon" type="image/png" href="https://pct-geoguesser.economicurtis.com/misc/pct-geoguesser-favicon.png">
+<link rel="apple-touch-icon" href="https://pct-geoguesser.economicurtis.com/misc/pct-geoguesser-favicon.png">
 <meta name="theme-color" content="#0d1117">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
-*, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-:root {{
+:root {
   --bg:        #0d1117;
   --surface:   #161b22;
   --surface2:  #21262d;
@@ -62,16 +35,16 @@ html = f"""<!DOCTYPE html>
   --pct-green: #1D502E;
   --pct-teal:  #008080;
   --pct-white: #FFFFFF;
-}}
+}
 
-body {{
+body {
   font-family: 'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100dvh;
-}}
+}
 
-.top-nav {{
+.top-nav {
   padding: 14px 20px;
   border-bottom: 1px solid var(--border);
   display: flex;
@@ -81,40 +54,40 @@ body {{
   max-width: 760px;
   margin: 0 auto;
   width: 100%;
-}}
-.back-link {{
+}
+.back-link {
   color: var(--pct-teal);
   text-decoration: none;
   font-size: 14px;
   font-weight: 600;
-}}
-.back-link:hover {{ text-decoration: underline; }}
+}
+.back-link:hover { text-decoration: underline; }
 
-.page {{
+.page {
   max-width: 760px;
   margin: 0 auto;
   padding: 0 16px 48px;
-}}
+}
 
-.page-header {{
+.page-header {
   padding: 28px 0 16px;
   text-align: center;
-}}
-.page-header h1 {{
+}
+.page-header h1 {
   font-size: clamp(22px, 5vw, 36px);
   font-weight: 800;
   color: var(--pct-white);
-}}
+}
 
 /* Tab bar — hidden by default, shown only when 90-day is enabled */
-.tab-bar {{
+.tab-bar {
   display: flex;
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
   margin-bottom: 24px;
-}}
-.tab {{
+}
+.tab {
   flex: 1;
   padding: 10px 16px;
   text-align: center;
@@ -125,21 +98,21 @@ body {{
   background: var(--surface);
   border: none;
   transition: background .15s, color .15s;
-}}
-.tab:hover:not(.tab-active) {{ background: var(--surface2); color: var(--text); }}
-.tab.tab-active {{
+}
+.tab:hover:not(.tab-active) { background: var(--surface2); color: var(--text); }
+.tab.tab-active {
   background: var(--pct-green);
   color: var(--pct-white);
   cursor: default;
-}}
+}
 
-.state-msg {{
+.state-msg {
   text-align: center;
   padding: 60px 20px;
   color: var(--muted);
   font-size: 15px;
-}}
-.state-msg .spinner {{
+}
+.state-msg .spinner {
   display: inline-block;
   width: 28px; height: 28px;
   border: 3px solid var(--border);
@@ -147,15 +120,15 @@ body {{
   border-radius: 50%;
   animation: spin .8s linear infinite;
   margin-bottom: 16px;
-}}
-@keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
-.lb-table {{
+.lb-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
-}}
-.lb-table th {{
+}
+.lb-table th {
   text-align: left;
   padding: 8px 12px;
   font-size: 11px;
@@ -163,65 +136,65 @@ body {{
   letter-spacing: .08em;
   color: var(--muted);
   border-bottom: 1px solid var(--border);
-}}
-.lb-table td {{
+}
+.lb-table td {
   padding: 12px 12px;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
-}}
-.lb-table tr:last-child td {{ border-bottom: none; }}
-.lb-table tbody tr:hover {{ background: var(--surface2); }}
+}
+.lb-table tr:last-child td { border-bottom: none; }
+.lb-table tbody tr:hover { background: var(--surface2); }
 
-.rank-cell {{
+.rank-cell {
   font-size: 16px;
   text-align: center;
   width: 44px;
   color: var(--muted);
   font-weight: 700;
-}}
-.rank-medal {{ font-size: 20px; }}
-.name-cell {{ min-width: 140px; }}
-.hiker-link {{
+}
+.rank-medal { font-size: 20px; }
+.name-cell { min-width: 140px; }
+.hiker-link {
   color: var(--pct-teal);
   font-weight: 700;
   text-decoration: none;
   font-size: 15px;
-}}
-.hiker-link:hover {{ text-decoration: underline; color: #5fd4d4; }}
-.pct-year {{
+}
+.hiker-link:hover { text-decoration: underline; color: #5fd4d4; }
+.pct-year {
   display: block;
   font-size: 12px;
   color: var(--muted);
   margin-top: 2px;
-}}
-.score-cell {{
+}
+.score-cell {
   font-size: 15px;
   font-weight: 700;
   color: var(--text);
   white-space: nowrap;
-}}
-.perf-cell {{
+}
+.perf-cell {
   color: var(--muted);
   font-size: 13px;
   white-space: nowrap;
-}}
-.perf-cell.all-perfect {{
+}
+.perf-cell.all-perfect {
   color: var(--pct-teal);
   font-weight: 700;
-}}
-.window-note {{
+}
+.window-note {
   text-align: center;
   font-size: 12px;
   color: var(--muted);
   margin-bottom: 16px;
-}}
+}
 
-@media (min-width: 600px) {{
-  .lb-table {{ font-size: 15px; }}
-  .lb-table th {{ font-size: 12px; padding: 10px 16px; }}
-  .lb-table td {{ padding: 14px 16px; }}
-  .hiker-link {{ font-size: 16px; }}
-}}
+@media (min-width: 600px) {
+  .lb-table { font-size: 15px; }
+  .lb-table th { font-size: 12px; padding: 10px 16px; }
+  .lb-table td { padding: 14px 16px; }
+  .hiker-link { font-size: 16px; }
+}
 </style>
 </head>
 <body>
@@ -267,54 +240,54 @@ body {{
 </div>
 
 <script>
-const sb = supabase.createClient('{SUPABASE_URL}', '{SUPABASE_ANON_KEY}');
+const sb = supabase.createClient('https://alrjrplclssjgpxqxzvk.supabase.co', 'sb_publishable_LxFCbmdg9ZlhDbr2np_ufQ_RcWTgcS8');
 const MEDALS = ['🥇','🥈','🥉'];
 
 // Current view: 'alltime' (default) or 'rolling'
 let currentView = 'alltime';
 let rollingEnabled = false;
 
-function showState(id) {{
+function showState(id) {
   ['state-loading','state-empty','state-error','lb-table']
     .forEach(s => document.getElementById(s).hidden = (s !== id));
-}}
+}
 
-function switchView(view) {{
+function switchView(view) {
   currentView = view;
   document.getElementById('tab-alltime').classList.toggle('tab-active', view === 'alltime');
   document.getElementById('tab-rolling').classList.toggle('tab-active', view === 'rolling');
   loadScores();
-}}
+}
 
-async function loadScores() {{
+async function loadScores() {
   showState('state-loading');
-  try {{
+  try {
     let query = sb
       .from('game_sessions')
       .select('user_id, total_score, perfect_count, photo_count, played_at, profiles(id, trail_name, pct_year)')
-      .order('total_score', {{ ascending: false }})
+      .order('total_score', { ascending: false })
       .limit(500);
 
-    if (currentView === 'rolling') {{
+    if (currentView === 'rolling') {
       const ago90 = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
       query = query.gte('played_at', ago90);
-    }}
+    }
 
-    const {{ data, error }} = await query;
+    const { data, error } = await query;
     if (error) throw error;
 
     // Keep only the best score per user (already sorted DESC, first hit = best)
     const seen = new Set();
     const rows = [];
-    for (const row of (data ?? [])) {{
-      if (row.profiles && !seen.has(row.user_id)) {{
+    for (const row of (data ?? [])) {
+      if (row.profiles && !seen.has(row.user_id)) {
         seen.add(row.user_id);
         rows.push(row);
         if (rows.length >= 100) break;
-      }}
-    }}
+      }
+    }
 
-    if (rows.length === 0) {{ showState('state-empty'); return; }}
+    if (rows.length === 0) { showState('state-empty'); return; }
 
     document.getElementById('window-note').textContent = currentView === 'rolling'
       ? 'Highest score per player in the last 90 days · max 2655.8 pts'
@@ -322,7 +295,7 @@ async function loadScores() {{
 
     const tbody = document.getElementById('lb-body');
     tbody.innerHTML = '';
-    rows.forEach((row, i) => {{
+    rows.forEach((row, i) => {
       const rank      = i + 1;
       const profileId = row.profiles.id;
       const name      = row.profiles.trail_name || 'Anonymous';
@@ -333,63 +306,58 @@ async function loadScores() {{
       const allPerf   = perfects === total;
 
       const rankHtml = rank <= 3
-        ? `<span class="rank-medal">${{MEDALS[rank-1]}}</span>`
-        : `${{rank}}`;
+        ? `<span class="rank-medal">${MEDALS[rank-1]}</span>`
+        : `${rank}`;
       const yearHtml = pctYear
-        ? `<span class="pct-year">PCT ${{pctYear}}</span>`
+        ? `<span class="pct-year">PCT ${pctYear}</span>`
         : '';
 
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td class="rank-cell">${{rankHtml}}</td>
+        <td class="rank-cell">${rankHtml}</td>
         <td class="name-cell">
-          <a href="/hiker/?id=${{profileId}}" class="hiker-link">${{name}}</a>
-          ${{yearHtml}}
+          <a href="/hiker/?id=${profileId}" class="hiker-link">${name}</a>
+          ${yearHtml}
         </td>
-        <td class="score-cell">${{score}} pts</td>
-        <td class="perf-cell${{allPerf ? ' all-perfect' : ''}}">${{perfects}}/${{total}}</td>
+        <td class="score-cell">${score} pts</td>
+        <td class="perf-cell${allPerf ? ' all-perfect' : ''}">${perfects}/${total}</td>
       `;
       tbody.appendChild(tr);
-    }});
+    });
 
     showState('lb-table');
-  }} catch (err) {{
+  } catch (err) {
     document.getElementById('error-msg').textContent = err.message || 'Failed to load leaderboard.';
     showState('state-error');
-  }}
-}}
+  }
+}
 
-async function init() {{
+async function init() {
   // Check admin setting: show_rolling_leaderboard
-  try {{
-    const {{ data }} = await sb
+  try {
+    const { data } = await sb
       .from('site_settings')
       .select('value')
       .eq('key', 'show_rolling_leaderboard')
       .maybeSingle();
     rollingEnabled = data?.value === 'true';
-  }} catch (_) {{
+  } catch (_) {
     rollingEnabled = false;
-  }}
+  }
 
-  if (rollingEnabled) {{
+  if (rollingEnabled) {
     document.getElementById('tab-bar').style.display = '';
     document.getElementById('lb-title').textContent = 'All-Time Leaderboard';
     document.getElementById('tab-alltime').classList.add('tab-active');
-  }} else {{
+  } else {
     document.getElementById('lb-title').textContent = 'Leaderboard';
-  }}
+  }
 
   currentView = 'alltime';
   loadScores();
-}}
+}
 
 init();
 </script>
 </body>
-</html>"""
-
-out = os.path.join(HERE, 'index.html')
-with open(out, 'w') as f:
-    f.write(html)
-print(f"Built {out}")
+</html>

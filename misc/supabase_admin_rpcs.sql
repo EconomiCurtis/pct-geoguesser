@@ -1,12 +1,12 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Admin RPCs for PCT GeoGuesser admin dashboard
 --
--- Paste both functions into Supabase Dashboard → SQL Editor and run once.
+-- Paste functions into Supabase Dashboard → SQL Editor and run once.
 -- These are SECURITY DEFINER — they run with elevated privileges, but
 -- include their own server-side admin email check (curtisesjunk@gmail.com),
 -- so calling them via the anon key is safe.
 --
--- IMPORTANT: These RPCs delete game data only. They do NOT delete from
+-- IMPORTANT: Delete RPCs remove game data only. They do NOT delete from
 -- auth.users — do that manually in Supabase Dashboard → Authentication → Users.
 -- ─────────────────────────────────────────────────────────────────────────────
 
@@ -106,5 +106,24 @@ BEGIN
     RAISE EXCEPTION 'Player not found';
   END IF;
   RETURN 'Updated name to: ' || trim(new_name);
+END;
+$$;
+
+
+-- ── 4. Set a site setting (admin only) ───────────────────────────────────────
+CREATE OR REPLACE FUNCTION admin_set_setting(p_key TEXT, p_value TEXT)
+RETURNS TEXT LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+  admin_email  CONSTANT TEXT := 'curtisesjunk@gmail.com';
+  caller_email TEXT;
+BEGIN
+  SELECT email INTO caller_email FROM auth.users WHERE id = auth.uid();
+  IF caller_email IS DISTINCT FROM admin_email THEN
+    RAISE EXCEPTION 'Access denied';
+  END IF;
+  INSERT INTO site_settings (key, value, updated_at)
+  VALUES (p_key, p_value, now())
+  ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now();
+  RETURN 'ok';
 END;
 $$;

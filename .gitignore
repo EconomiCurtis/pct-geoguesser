@@ -10,10 +10,8 @@
 # ── Wrangler CLI cache ────────────────────────────────────────────────────────
 .wrangler/
 
-# ── All deploy artifacts ──────────────────────────────────────────────────────
-# Photos (834 MB), logos, and generated HTML — all served via Cloudflare Pages.
-# Deploy separately with: npx wrangler pages deploy deploy/ --project-name=pct-geoguesser
-deploy/
+# ── Deploy: photos only (637 MB — GitHub-hostile, reproducible from img/ + photos.csv) ──
+deploy/miles/
 
 # ── Large photo archives ──────────────────────────────────────────────────────
 raw-photos-save/

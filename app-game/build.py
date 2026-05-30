@@ -154,7 +154,7 @@ sys.path.insert(0, os.path.join(HERE, '..', 'misc'))
 from supabase_config import SUPABASE_URL, SUPABASE_ANON_KEY
 
 CSV_PATH      = os.path.join(HERE, '..', 'misc', 'photos.csv')
-MISC_BASE_URL = 'https://pct-geoguesser.pages.dev/misc'
+MISC_BASE_URL = 'https://pct-geoguesser.economicurtis.com/misc'
 
 with open(CSV_PATH) as f:
     rows = list(csv.DictReader(f))
@@ -221,13 +221,13 @@ def make_html(mode):
     # ── Page metadata ────────────────────────────────────────
     if practice:
         page_title = 'PCT GeoGuesser — Practice'
-        og_url     = 'https://pct-geoguesser.pages.dev/practice/'
+        og_url     = 'https://pct-geoguesser.economicurtis.com/practice/'
         og_title   = 'PCT GeoGuesser — Practice'
         og_desc    = 'Test your PCT trail knowledge. No login required.'
         meta_desc  = 'How well do you know the Pacific Crest Trail? Guess the trail mile from 10 photos.'
     else:
         page_title = 'PCT GeoGuesser — Scored'
-        og_url     = 'https://pct-geoguesser.pages.dev/game/'
+        og_url     = 'https://pct-geoguesser.economicurtis.com/game/'
         og_title   = 'PCT GeoGuesser — Scored'
         og_desc    = 'Compete on the global PCT leaderboard.'
         meta_desc  = 'Compete on the global PCT GeoGuesser leaderboard. Sign in with Google.'
@@ -532,7 +532,7 @@ async function signInWithGoogle() {{
   btn.childNodes[btn.childNodes.length - 1].textContent = ' Redirecting…';
   await sb.auth.signInWithOAuth({{
     provider: 'google',
-    options: {{ redirectTo: 'https://pct-geoguesser.pages.dev/game/' }},
+    options: {{ redirectTo: 'https://pct-geoguesser.economicurtis.com/game/' }},
   }});
 }}
 

@@ -1,17 +1,18 @@
 #!/bin/bash
 # build.sh — PCT GeoGuesser
 #
-# Run by Cloudflare Pages on every push to the GitHub repo.
 # Generates all HTML pages and places them in deploy/.
-# Photos (deploy/miles/) and logos (deploy/misc/) are tracked in git and
-# need no regeneration — only the HTML files are rebuilt here.
+# Run this locally before deploying.
 #
-# Cloudflare Pages settings:
-#   Build command:    bash build.sh
-#   Output directory: deploy
+# Photos (deploy/miles/, 637 MB) are gitignored — copy them via
+#   python3 misc/copy_rename_photos.py
+# before the first deploy on a new machine.
 #
-# To run locally (from the repo root):
+# To rebuild HTML:
 #   bash build.sh
+#
+# To deploy to Cloudflare Pages (manual — not git-triggered):
+#   npx wrangler pages deploy deploy/ --project-name=pct-geoguesser
 
 set -e  # stop on first error
 

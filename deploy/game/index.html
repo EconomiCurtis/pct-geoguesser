@@ -1,0 +1,1439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>PCT GeoGuesser — Scored</title>
+<meta property="og:type"        content="website">
+<meta property="og:url"         content="https://pct-geoguesser.economicurtis.com/game/">
+<meta property="og:title"       content="PCT GeoGuesser — Scored">
+<meta property="og:description" content="Compete on the global PCT leaderboard.">
+<meta property="og:image"       content="https://pct-geoguesser.economicurtis.com/misc/preview.png">
+<meta name="twitter:card"        content="summary_large_image">
+<meta name="twitter:title"       content="PCT GeoGuesser — Scored">
+<meta name="twitter:description" content="Compete on the global PCT leaderboard.">
+<meta name="twitter:image"       content="https://pct-geoguesser.economicurtis.com/misc/preview.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" href="https://pct-geoguesser.economicurtis.com/misc/pct-geoguesser-favicon.png">
+<link rel="apple-touch-icon" href="https://pct-geoguesser.economicurtis.com/misc/pct-geoguesser-favicon.png">
+<meta name="theme-color" content="#0d1117">
+<meta name="description" content="Compete on the global PCT GeoGuesser leaderboard. Sign in with Google.">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0d1117;
+  --surface:   #161b22;
+  --surface2:  #21262d;
+  --border:    #30363d;
+  --text:      #f0f6fc;
+  --muted:     #8b949e;
+  --pct-green: #1D502E;
+  --pct-teal:  #008080;
+  --pct-blue:  #1C2D50;
+  --pct-white: #FFFFFF;
+  --timer-red: #dc2626;
+  --perfect:   #008080;
+  --nobo-col:  #2ab062;
+  --sobo-col:  #c8a96e;
+  --north-col: #6fd4a0;
+  --south-col: #c8a96e;
+}
+
+body {
+  font-family: 'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Screens ─────────────────────────────────────────────── */
+.screen { display: none; flex-direction: column; height: 100dvh; overflow: hidden; }
+.screen.active { display: flex; }
+
+/* ── Loading / spinner ───────────────────────────────────── */
+#screen-loading {
+  align-items: center; justify-content: center; gap: 14px;
+}
+.loading-spinner {
+  width: 36px; height: 36px;
+  border: 3px solid var(--border); border-top-color: var(--pct-teal);
+  border-radius: 50%; animation: spin .8s linear infinite;
+}
+.loading-spinner-sm {
+  width: 14px; height: 14px; flex-shrink: 0;
+  border: 2px solid var(--border); border-top-color: var(--pct-teal);
+  border-radius: 50%; animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { color: var(--muted); font-size: 14px; }
+
+/* ── Shared centred-page layout ──────────────────────────── */
+.page-center {
+  align-items: center; justify-content: center; overflow-y: auto;
+  padding: 24px 20px; gap: 18px; text-align: center;
+}
+
+/* ── Logo ─────────────────────────────────────────────────── */
+.logo-pair {
+  display: flex; align-items: center; justify-content: center;
+}
+.logo-box {
+  background: #fff; border-radius: 10px;
+  border: 3px solid #000; box-shadow: 0 0 0 3px #fff;
+  padding: 12px; display: inline-flex; align-items: center;
+  justify-content: center; gap: 16px;
+}
+.logo-pair img { object-fit: contain; }
+.logo-old { height: 94px;  width: auto; }
+.logo-new { height: 84px;  width: auto; }
+
+/* ── Heading ─────────────────────────────────────────────── */
+h1 {
+  font-size: clamp(26px, 6vw, 46px); font-weight: 800; line-height: 1.1;
+  color: var(--pct-white); text-shadow: 0 0 30px rgba(0,128,128,.4);
+}
+h1 span { color: var(--pct-teal); }
+.start-sub {
+  color: var(--muted); font-size: 14px; max-width: 360px; line-height: 1.5;
+}
+
+/* ── Buttons ─────────────────────────────────────────────── */
+.btn-green {
+  background: var(--pct-green); color: var(--pct-white);
+  border: none; border-radius: 10px;
+  padding: 13px 36px; font-size: 16px; font-weight: 700;
+  cursor: pointer; transition: filter .15s, transform .1s;
+  letter-spacing: .01em; white-space: nowrap;
+}
+.btn-green:hover { filter: brightness(1.25); transform: translateY(-1px); }
+.btn-green:active { transform: translateY(0); }
+.btn-green:disabled { opacity: .6; cursor: default; transform: none; }
+.btn-outline {
+  background: transparent; color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 13px; font-size: 15px; font-weight: 600;
+  cursor: pointer; width: 100%; transition: background .15s, border-color .15s;
+  text-decoration: none; display: block; text-align: center;
+}
+.btn-outline:hover { background: var(--surface2); border-color: var(--muted); }
+
+/* ── Google sign-in button ───────────────────────────────── */
+.btn-google {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  background: #fff; color: #3c4043;
+  border: 1px solid #dadce0; border-radius: 10px;
+  padding: 13px 24px; font-size: 16px; font-weight: 600;
+  cursor: pointer; transition: box-shadow .15s;
+  font-family: 'Open Sans', Arial, sans-serif;
+}
+.btn-google:hover { box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+.btn-google:disabled { opacity: .6; cursor: default; box-shadow: none; }
+
+/* ── Rules card ──────────────────────────────────────────── */
+.rules-card {
+  background: var(--surface); border: 1px solid var(--pct-green);
+  border-radius: 12px; padding: 16px 18px;
+  max-width: 400px; width: 100%; text-align: left;
+}
+.rules-card h3 {
+  font-size: 10px; text-transform: uppercase;
+  letter-spacing: .12em; color: var(--pct-teal); margin-bottom: 10px;
+}
+.rules-card ul + h3 { margin-top: 14px; }
+.rules-card ul { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.rules-card li {
+  display: flex; align-items: baseline; gap: 9px;
+  font-size: 13px; line-height: 1.45; color: var(--text);
+}
+.rules-card li::before { content: '▸'; color: var(--pct-green); flex-shrink: 0; }
+.rules-card a { color: var(--pct-teal); text-decoration: underline; }
+.rules-card a:hover { color: #5fd4d4; }
+.about-link { font-size: 12px; color: var(--muted); text-align: center; }
+
+/* ══════════════════════════════════════════════════════════
+   AUTH SCREEN
+══════════════════════════════════════════════════════════ */
+.auth-sub {
+  color: var(--muted); font-size: 14px; max-width: 320px; line-height: 1.5;
+}
+.auth-practice {
+  font-size: 13px; color: var(--muted);
+}
+.auth-practice a { color: var(--pct-teal); text-decoration: underline; }
+.auth-practice a:hover { color: #5fd4d4; }
+.auth-sub a { color: var(--pct-teal); text-decoration: underline; }
+.auth-sub a:hover { color: #5fd4d4; }
+
+/* ══════════════════════════════════════════════════════════
+   SIGNUP SCREEN
+══════════════════════════════════════════════════════════ */
+.signup-card {
+  background: var(--surface); border: 1px solid var(--pct-green);
+  border-radius: 12px; padding: 20px 22px;
+  max-width: 400px; width: 100%; text-align: left;
+  display: flex; flex-direction: column; gap: 16px;
+}
+.signup-card h3 {
+  font-size: 10px; text-transform: uppercase;
+  letter-spacing: .12em; color: var(--pct-teal);
+}
+.form-field { display: flex; flex-direction: column; gap: 6px; }
+.form-label {
+  font-size: 11px; text-transform: uppercase;
+  letter-spacing: .09em; color: var(--muted);
+}
+.form-input {
+  background: var(--surface2); color: var(--text);
+  border: 2px solid var(--border); border-radius: 8px;
+  padding: 10px 12px; font-size: 16px; outline: none;
+  font-family: inherit;
+}
+.form-input:focus { border-color: var(--pct-teal); }
+.form-hint { font-size: 11px; color: var(--muted); }
+.form-error { font-size: 12px; color: #dc2626; min-height: 16px; }
+textarea.form-input { resize: vertical; min-height: 80px; font-size: 14px; line-height: 1.5; }
+.char-count { font-size: 11px; color: var(--muted); font-weight: 400; }
+.signup-cancel { font-size: 13px; color: var(--muted); text-decoration: none; text-align: center; }
+.signup-cancel:hover { color: var(--text); }
+
+/* ══════════════════════════════════════════════════════════
+   START SCREEN (authenticated)
+══════════════════════════════════════════════════════════ */
+.greeting {
+  font-size: 17px; font-weight: 600; color: var(--muted);
+}
+.greeting-link {
+  color: var(--text); text-decoration: none; transition: color .15s;
+}
+.greeting-link:hover { color: var(--pct-teal); text-decoration: underline; }
+.start-links {
+  display: flex; gap: 18px; align-items: center; font-size: 13px;
+}
+.start-links a {
+  color: var(--muted); text-decoration: none; transition: color .15s;
+}
+.start-links a:hover { color: var(--text); }
+.start-links .dot { color: var(--border); }
+
+/* ══════════════════════════════════════════════════════════
+   GUESS SCREEN
+══════════════════════════════════════════════════════════ */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 14px; background: var(--surface);
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.progress-text { font-size: 13px; font-weight: 600; color: var(--muted); }
+.progress-text strong { color: var(--text); }
+.timer-bar-track { width: 100%; height: 7px; background: var(--surface2); flex-shrink: 0; }
+.timer-bar-fill { height: 100%; background: var(--timer-red); transition: width .95s linear; }
+.timer-num {
+  font-size: 20px; font-weight: 800; color: var(--timer-red);
+  font-variant-numeric: tabular-nums; min-width: 32px; text-align: right;
+}
+.photo-frame {
+  flex: 1; min-height: 0; position: relative;
+  display: flex; align-items: center; justify-content: center;
+  background: #000; overflow: hidden; touch-action: none;
+}
+.photo-frame img {
+  max-width: 100%; max-height: 100%; object-fit: contain; display: block;
+  transform-origin: center center; will-change: transform;
+}
+.hint-strip {
+  display: flex; justify-content: center; align-items: center; gap: 12px;
+  padding: 9px 14px; background: var(--surface);
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.hint-chip {
+  display: flex; align-items: center; gap: 6px;
+  border-radius: 6px; padding: 5px 13px;
+  font-size: 13px; font-weight: 700; letter-spacing: .02em;
+  border: 1px solid transparent;
+}
+.hint-season  { background: rgba(29,80,46,.25);   color: #7ecb96;          border-color: var(--pct-green); }
+.hint-nobo    { background: rgba(42,176,98,.18);   color: #6fd4a0;          border-color: var(--nobo-col);  }
+.hint-sobo    { background: rgba(200,169,110,.18); color: var(--sobo-col);  border-color: var(--sobo-col);  }
+.hint-chip.hint-credit { background: rgba(139,148,158,.1); color: var(--muted); border-color: var(--border); font-weight: 400; font-style: italic; }
+.input-section {
+  flex-shrink: 0; background: var(--surface); padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.input-label { font-size: 11px; color: var(--muted); text-align: center; text-transform: uppercase; letter-spacing: .09em; }
+.input-row { display: flex; gap: 9px; }
+#mile-input {
+  flex: 1; background: var(--surface2); color: var(--text);
+  border: 2px solid var(--border); border-radius: 8px;
+  padding: 10px 12px; font-size: 26px; font-weight: 700;
+  text-align: center; outline: none; -moz-appearance: textfield;
+}
+#mile-input::-webkit-outer-spin-button,
+#mile-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+#mile-input:focus { border-color: var(--pct-teal); }
+#mile-input::placeholder { color: var(--border); font-size: 18px; font-weight: 400; }
+.btn-submit {
+  background: var(--pct-green); color: var(--pct-white);
+  border: none; border-radius: 8px;
+  padding: 10px 18px; font-size: 14px; font-weight: 700;
+  cursor: pointer; white-space: nowrap; transition: filter .15s;
+}
+.btn-submit:hover { filter: brightness(1.3); }
+.trail-slider-wrap { display: flex; flex-direction: column; gap: 4px; padding-top: 2px; }
+#trail-slider {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 6px; border-radius: 3px;
+  background: linear-gradient(to right, #c8a96e 0.00% 26.44%, #d8d8d8 26.44% 41.13%, #2ab062 41.13% 63.72%, #008080 63.72% 80.85%, #1D502E 80.85% 100.00%);
+  outline: none; cursor: pointer;
+  --thumb-left:   #d4b07a;
+  --thumb-center: #c8a96e;
+  --thumb-right:  #c8a96e;
+  --thumb-glow:   rgba(200,169,110,.35);
+}
+#trail-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 22px; height: 22px;
+  background: linear-gradient(90deg, var(--thumb-left) 0%, var(--thumb-center) 50%, var(--thumb-right) 100%);
+  border-radius: 50%; border: 2px solid rgba(255,255,255,.2);
+  cursor: grab; box-shadow: 0 2px 6px rgba(0,0,0,.7), 0 0 0 3px var(--thumb-glow);
+}
+#trail-slider::-moz-range-thumb {
+  width: 22px; height: 22px;
+  background: linear-gradient(90deg, var(--thumb-left) 0%, var(--thumb-center) 50%, var(--thumb-right) 100%);
+  border-radius: 50%; border: 2px solid rgba(255,255,255,.2);
+  cursor: grab; box-shadow: 0 2px 6px rgba(0,0,0,.7);
+}
+.trail-marks { position: relative; height: 14px; }
+.trail-marks span {
+  position: absolute; font-size: 9px; color: var(--muted);
+  font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap;
+}
+.trail-sections { display: flex; width: 100%; gap: 1px; border-radius: 3px; overflow: hidden; }
+.ts-sec {
+  text-align: center; font-size: 9px; font-weight: 600;
+  padding: 2px 1px; overflow: hidden; white-space: nowrap; letter-spacing: .02em;
+}
+@media (pointer: coarse) {
+  #trail-slider { height: 8px; }
+  #trail-slider::-webkit-slider-thumb { width: 32px; height: 32px; }
+  #trail-slider::-moz-range-thumb    { width: 32px; height: 32px; }
+}
+
+/* ══════════════════════════════════════════════════════════
+   RESULT SCREEN
+══════════════════════════════════════════════════════════ */
+#screen-result { overflow-y: auto; }
+.result-score-wrap { flex-shrink: 0; display: flex; justify-content: center; padding: 12px 16px 0; }
+.result-score-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px 20px;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  width: 100%; max-width: 420px;
+}
+.rsc-cols { display: flex; align-items: flex-start; justify-content: center; width: 100%; }
+.rsc-col  { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.rsc-divider { width: 1px; background: var(--border); align-self: stretch; margin: 0 16px; }
+.rsc-label { font-size: 10px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); }
+.rsc-num   { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text); }
+.rsc-num.true-mile { color: var(--pct-teal); }
+.rsc-guess-was { font-size: 9px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-bottom: -4px; }
+.rsc-verdict { font-size: 22px; font-weight: 800; text-align: center; line-height: 1.2; }
+.rsc-verdict.spoton  { color: var(--perfect); }
+.rsc-verdict.north   { color: var(--north-col); }
+.rsc-verdict.south   { color: var(--south-col); }
+.rsc-verdict.timeout { color: var(--muted); font-size: 16px; font-weight: 600; }
+.rsc-scores { width: 100%; display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--border); padding-top: 8px; }
+.rsc-score-row   { display: flex; justify-content: space-between; align-items: baseline; }
+.rsc-score-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.rsc-score-val   { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rsc-score-val.perfect { color: var(--perfect); }
+.result-photo-wrap {
+  flex: 1; min-height: 180px; max-height: 50vh; position: relative;
+  display: flex; align-items: center; justify-content: center;
+  background: #000; overflow: hidden; margin-top: 10px; touch-action: none;
+}
+.result-photo-wrap img {
+  width: 100%; height: 100%; object-fit: contain; display: block;
+  transform-origin: center center; will-change: transform;
+}
+.answer-meta-bar {
+  flex-shrink: 0; display: flex; flex-wrap: wrap;
+  justify-content: center; align-items: center; gap: 6px;
+  padding: 8px 14px; background: var(--surface); border-bottom: none;
+}
+.answer-credit-bar {
+  flex-shrink: 0; display: flex;
+  justify-content: center; padding: 2px 14px 8px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.a-chip {
+  font-size: 11px; font-weight: 600; padding: 3px 10px;
+  border-radius: 20px; background: var(--surface2); color: var(--muted);
+  border: 1px solid var(--border);
+}
+.a-chip.mile   { color: var(--pct-teal); border-color: var(--pct-teal); background: rgba(0,128,128,.12); font-size: 13px; font-weight: 700; }
+.a-chip.credit { color: var(--muted); font-style: italic; }
+.result-actions { flex-shrink: 0; padding: 12px 14px; background: var(--surface); border-top: 1px solid var(--border); }
+
+/* ══════════════════════════════════════════════════════════
+   END SCREEN
+══════════════════════════════════════════════════════════ */
+#screen-end { overflow-y: auto; padding: 20px 14px 32px; align-items: center; gap: 18px; }
+.end-title { font-size: clamp(22px, 5vw, 34px); font-weight: 800; text-align: center; }
+.final-box {
+  background: var(--surface); border: 1px solid var(--pct-teal);
+  border-radius: 14px; padding: 18px 28px; text-align: center;
+  width: 100%; max-width: 300px;
+}
+.final-box .fb-label { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); margin-bottom: 5px; }
+.final-box .fb-score { font-size: 52px; font-weight: 800; line-height: 1; color: var(--pct-teal); font-variant-numeric: tabular-nums; }
+.final-box .fb-unit  { font-size: 12px; color: var(--muted); margin-top: 3px; }
+.final-avg { font-size: 16px; font-weight: 600; color: var(--muted); text-align: center; margin-top: -8px; }
+
+.submit-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px 20px;
+  width: 100%; max-width: 400px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+.submit-loading {
+  display: flex; align-items: center; gap: 10px;
+  color: var(--muted); font-size: 14px;
+}
+.submit-success { display: none; flex-direction: column; align-items: center; gap: 8px; }
+.rank-label { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.rank-num   { font-size: 48px; font-weight: 800; line-height: 1; color: var(--pct-teal); font-variant-numeric: tabular-nums; }
+.rank-sub   { font-size: 12px; color: var(--muted); }
+.rank-lb-link { font-size: 13px; color: var(--pct-teal); text-decoration: underline; }
+.rank-lb-link:hover { color: #5fd4d4; }
+.submit-error { display: none; font-size: 13px; color: #dc2626; }
+
+.end-table-wrap { width: 100%; max-width: 580px; overflow-x: auto; }
+.end-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.end-table th { padding: 6px 10px; font-size: 10px; text-transform: uppercase; letter-spacing: .09em; border-bottom: 1px solid var(--border); white-space: nowrap; font-weight: 700; }
+.end-table th.th-photo { text-align: left; color: var(--muted); }
+.end-table th.th-guess { text-align: right; color: var(--sobo-col); }
+.end-table th.th-mile  { text-align: right; color: var(--pct-teal); }
+.end-table th.th-score { text-align: right; color: #7ecb96; }
+.end-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.end-table tr:last-child td { border-bottom: none; }
+.end-table .td-thumb { width: 52px; padding: 4px 10px 4px 0; }
+.et-thumb { width: 52px; height: 38px; object-fit: cover; border-radius: 4px; cursor: pointer; display: block; transition: opacity .15s; border: 1px solid var(--border); }
+.et-thumb:hover { opacity: .8; border-color: var(--pct-teal); }
+.end-table .td-guess { text-align: right; font-weight: 700; color: var(--sobo-col); font-variant-numeric: tabular-nums; }
+.end-table .td-guess.no-answer { color: var(--muted); font-weight: 400; font-size: 11px; }
+.end-table .td-mile  { text-align: right; font-weight: 700; color: var(--pct-teal); font-variant-numeric: tabular-nums; }
+.end-table .td-score { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.end-table .td-score.perfect { color: var(--pct-teal); }
+.end-table .td-score.off     { color: var(--muted); }
+.end-actions { display: flex; gap: 10px; width: 100%; max-width: 300px; }
+.end-actions .btn-green  { flex: 1; padding: 13px; }
+.end-actions .btn-outline { flex: 1; }
+
+/* ── Lightbox ─────────────────────────────────────────── */
+#lightbox { display: none; position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.92); align-items: center; justify-content: center; flex-direction: column; gap: 12px; padding: 16px; }
+#lightbox.open { display: flex; }
+#lightbox img { max-width: 100%; max-height: 80vh; object-fit: contain; border-radius: 6px; }
+.lightbox-caption { font-size: 13px; color: var(--muted); text-align: center; }
+.lightbox-close { position: absolute; top: 14px; right: 14px; background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 50%; width: 36px; height: 36px; font-size: 18px; line-height: 36px; text-align: center; cursor: pointer; transition: background .15s; }
+.lightbox-close:hover { background: var(--border); }
+
+/* ── Mobile logo scale-up ─────────────────────────────── */
+@media (max-width: 640px) {
+  .logo-box { padding: 18px; gap: 24px; }
+  .logo-old { height: 140px; }
+  .logo-new { height: 126px; }
+}
+
+/* ── Desktop scale-up ─────────────────────────────────── */
+@media (min-width: 900px) {
+  .page-center { gap: 26px; }
+  .logo-old { height: 117px; }
+  .logo-new { height: 106px; }
+  h1 { font-size: clamp(52px, 5.5vw, 88px); }
+  .start-sub { font-size: 18px; max-width: 520px; }
+  .rules-card { max-width: 580px; padding: 22px 26px; }
+  .rules-card h3 { font-size: 12px; margin-bottom: 14px; }
+  .rules-card li { font-size: 16px; }
+  .btn-green { font-size: 18px; padding: 15px 44px; }
+  .signup-card { max-width: 480px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ════════════════ LOADING ════════════════ -->
+<div id="screen-loading" class="screen active">
+  <div class="loading-spinner"></div>
+  <p class="loading-text">Loading…</p>
+</div>
+
+<!-- ════════════════ AUTH ════════════════ -->
+<div id="screen-auth" class="screen page-center">
+  <div class="logo-pair">
+    <div class="logo-box">
+      <img src="https://pct-geoguesser.economicurtis.com/misc/pct-orig-logo.webp" class="logo-old" alt="PCT original logo">
+      <img src="https://pct-geoguesser.economicurtis.com/misc/pct-new-logo.webp"  class="logo-new" alt="PCT shield logo">
+    </div>
+  </div>
+  <h1>PCT <span>GeoGuesser</span></h1>
+  <p class="auth-sub">Sign in to compete on the <span style="white-space:nowrap">global <a href="/leaderboard/">leaderboard</a>.</span></p>
+  <button class="btn-google" id="btn-google" onclick="signInWithGoogle()">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="20" height="20">
+      <path fill="#FFC107" d="M43.6 20H24v8h11.3c-1.1 5.4-5.8 8-11.3 8-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l5.7-5.7C34.1 4.1 29.3 2 24 2 12.9 2 4 10.9 4 22s8.9 20 20 20 20-8.9 20-20c0-1.4-.1-2.7-.4-4z"/>
+      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.1 8 2.9l5.7-5.7C34.1 4.1 29.3 2 24 2c-7.7 0-14.4 4.3-17.7 10.7z"/>
+      <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2A11.9 11.9 0 0 1 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/>
+      <path fill="#1976D2" d="M43.6 20H42V20H24v8h11.3a12 12 0 0 1-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.4-.1-2.7-.4-4z"/>
+    </svg>
+    Sign in with Google
+  </button>
+  <p class="auth-practice">No account? <a href="/practice/">Try Practice Mode</a> — no login required.</p>
+</div>
+
+<!-- ════════════════ SIGNUP ════════════════ -->
+<div id="screen-signup" class="screen page-center">
+  <div class="logo-pair">
+    <div class="logo-box">
+      <img src="https://pct-geoguesser.economicurtis.com/misc/pct-orig-logo.webp" class="logo-old" alt="PCT original logo">
+      <img src="https://pct-geoguesser.economicurtis.com/misc/pct-new-logo.webp"  class="logo-new" alt="PCT shield logo">
+    </div>
+  </div>
+  <h1>PCT <span>GeoGuesser</span></h1>
+  <p class="start-sub" id="signup-subtitle">One-time setup — your name and year appear on the leaderboard.</p>
+  <div class="signup-card">
+    <h3>Your Hiker Profile</h3>
+    <div class="form-field">
+      <label class="form-label" for="trail-name-input">Trail Name</label>
+      <input type="text" id="trail-name-input" class="form-input"
+             placeholder="e.g. Whiskey Jack" maxlength="60" autocomplete="off">
+      <p class="form-hint">Shown on the leaderboard next to your scores.</p>
+    </div>
+    <div class="form-field">
+      <label class="form-label" for="pct-year-input">PCT Year</label>
+      <input type="text" id="pct-year-input" class="form-input"
+             placeholder="e.g. 2025, 2024 / 2026, planning 2027" maxlength="40" autocomplete="off">
+      <p class="form-hint">When did / will you hike? Shown below your trail name.</p>
+    </div>
+    <div class="form-field">
+      <label class="form-label" for="about-input">About <span class="char-count" id="about-char-count">(0/500)</span></label>
+      <textarea id="about-input" class="form-input" rows="3"
+                placeholder="Optional: tell other hikers a bit about yourself…"
+                maxlength="500" autocomplete="off"
+                oninput="updateAboutCount()"></textarea>
+      <p class="form-hint">Shown on your hiker profile page. Optional.</p>
+    </div>
+    <p class="form-error" id="signup-error"></p>
+    <button class="btn-green" id="btn-save-profile" onclick="saveProfile()">Save and Play →</button>
+    <p id="save-slow-hint" class="form-hint" style="display:none;text-align:center">Taking a moment — first saves can be slow ☁️</p>
+    <a href="#" id="signup-cancel" class="signup-cancel" style="display:none" onclick="cancelEditProfile(); return false;">← Cancel</a>
+  </div>
+</div>
+
+<!-- ════════════════ START (authenticated) ════════════════ -->
+<div id="screen-start" class="screen page-center">
+  <div class="logo-pair">
+    <div class="logo-box">
+      <img src="https://pct-geoguesser.economicurtis.com/misc/pct-orig-logo.webp" class="logo-old" alt="PCT original logo">
+      <img src="https://pct-geoguesser.economicurtis.com/misc/pct-new-logo.webp"  class="logo-new" alt="PCT shield logo">
+    </div>
+  </div>
+  <h1>PCT <span>GeoGuesser</span></h1>
+  <p class="greeting">Hey, <a id="greeting-name" class="greeting-link" href="#">…</a>! 👋</p>
+  <div class="rules-card">
+    <h3>How to Play</h3>
+    <ul>
+      <li>You'll see 10 photos taken somewhere along the PCT</li>
+      <li><span>Enter the PCT (NoBo) mile you think matches the location (<a href="https://pcta.maps.arcgis.com/apps/instant/sidebar/index.html?appid=3b1817932adf42009f30b6b38828212e" target="_blank" rel="noopener">see PCTA mile markers</a>)</span></li>
+      <li>You'll have <strong>60 seconds</strong> to guess</li>
+    </ul>
+    <h3>Scoring (top score wins)</h3>
+    <ul>
+      <li>The closer your guesses are to the correct mile, the better your score.</li>
+      <li>Within <strong>3 miles</strong> = perfect score</li>
+      <li>Top score possible is <strong>2,655.8</strong></li>
+    </ul>
+    <h3>Tips</h3>
+    <ul>
+      <li>Photos can come from anywhere along the full trail.</li>
+      <li>Pay attention to the date &amp; hiking direction. Not every photo was taken during summer.</li>
+    </ul>
+  </div>
+  <button class="btn-green" onclick="startGame()">Start Scored Game →</button>
+  <div class="start-links">
+    <a href="/leaderboard/">Leaderboard</a>
+    <span class="dot">·</span>
+    <a href="#" onclick="showEditProfile(); return false;">Edit Profile</a>
+    <span class="dot">·</span>
+    <a href="#" onclick="signOut(); return false;">Sign out</a>
+  </div>
+  <p class="about-link">About PCT GeoGuesser</p>
+</div>
+
+<!-- ════════════════ GUESS ════════════════ -->
+<div id="screen-guess" class="screen">
+  <div class="topbar">
+    <div class="progress-text">Photo <strong id="g-cur">1</strong> / <strong id="g-tot">10</strong></div>
+    <div class="timer-num" id="timer-num">60</div>
+  </div>
+  <div class="timer-bar-track">
+    <div class="timer-bar-fill" id="timer-fill" style="width:100%"></div>
+  </div>
+  <div class="photo-frame">
+    <img id="g-photo" src="" alt="Trail photo">
+  </div>
+  <div class="hint-strip">
+    <div class="hint-chip hint-season" id="g-season"></div>
+    <div class="hint-chip" id="g-direction"></div>
+    <div class="hint-chip hint-credit" id="g-photo-by" style="display:none"></div>
+  </div>
+  <div class="input-section">
+    <div class="input-label">What Mile is this?</div>
+    <div class="input-row">
+      <input type="number" id="mile-input" min="0" max="2655"
+             placeholder="e.g. 1054" autocomplete="off" inputmode="numeric">
+      <button class="btn-submit" onclick="submitGuess()">Submit →</button>
+    </div>
+    <div class="trail-slider-wrap">
+      <input type="range" id="trail-slider" min="0" max="2655" step="1" value="0">
+      <div class="trail-marks">
+      <span style="left:0;transform:none">0</span>
+      <span style="left:26.44%;transform:translateX(-50%)">702</span>
+      <span style="left:41.13%;transform:translateX(-50%)">1,092</span>
+      <span style="left:63.72%;transform:translateX(-50%)">1,692</span>
+      <span style="left:80.85%;transform:translateX(-50%)">2,147</span>
+      <span style="right:0;left:auto;transform:none">2,655</span>
+      </div>
+      <div class="trail-sections">
+      <div class="ts-sec" style="flex:702.1;background:rgba(200,169,110,.2);color:#d4b07a">S. California</div>
+      <div class="ts-sec" style="flex:390.2;background:rgba(240,246,252,.12);color:#e8e8e8">Sierra</div>
+      <div class="ts-sec" style="flex:599.7;background:rgba(42,176,98,.2);color:#4fca84">N. California</div>
+      <div class="ts-sec" style="flex:455.0;background:rgba(0,128,128,.2);color:#5fd4d4">Oregon</div>
+      <div class="ts-sec" style="flex:508.5;background:rgba(29,80,46,.3);color:#7ecb96">Washington</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════ RESULT ════════════════ -->
+<div id="screen-result" class="screen">
+  <div class="result-score-wrap">
+    <div class="result-score-card">
+      <div class="rsc-cols">
+        <div class="rsc-col">
+          <div class="rsc-label">Your Guess</div>
+          <div class="rsc-num" id="r-your-guess"></div>
+        </div>
+        <div class="rsc-divider"></div>
+        <div class="rsc-col">
+          <div class="rsc-label">Correct Mile</div>
+          <div class="rsc-num true-mile" id="r-true-mile"></div>
+        </div>
+      </div>
+      <div class="rsc-guess-was">Your Guess Was</div>
+      <div class="rsc-verdict" id="st-verdict"></div>
+      <div class="rsc-scores">
+        <div class="rsc-score-row">
+          <span class="rsc-score-label">Round score</span>
+          <span class="rsc-score-val" id="st-round"></span>
+        </div>
+        <div class="rsc-score-row">
+          <span class="rsc-score-label">Total score</span>
+          <span class="rsc-score-val" id="st-total"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="result-photo-wrap">
+    <img id="r-photo" src="" alt="">
+  </div>
+  <div class="answer-meta-bar">
+    <span class="a-chip mile" id="r-mile"></span>
+    <span class="a-chip" id="r-section"></span>
+    <span class="a-chip" id="r-date"></span>
+    <span class="a-chip" id="r-dir"></span>
+  </div>
+  <div class="answer-credit-bar" id="answer-credit-bar" style="display:none">
+    <span class="a-chip credit" id="r-photo-by"></span>
+  </div>
+  <div class="result-actions">
+    <button class="btn-outline" id="btn-next" onclick="nextPhoto()">Next Photo →</button>
+  </div>
+</div>
+
+<!-- ════════════════ END ════════════════ -->
+<div id="screen-end" class="screen">
+  <div class="end-title">Game Complete! 🏁</div>
+  <div class="final-box">
+    <div class="fb-label">Final Score</div>
+    <div class="fb-score" id="final-score"></div>
+    <div class="fb-unit">out of 2655.8 · higher is better</div>
+  </div>
+  <div class="final-avg" id="final-avg"></div>
+
+  <!-- Score submission + rank -->
+  <div class="submit-card">
+    <div class="submit-loading" id="submit-loading">
+      <div class="loading-spinner-sm"></div>
+      Saving score…
+    </div>
+    <div class="submit-success" id="submit-success">
+      <p class="rank-label">90-day leaderboard rank</p>
+      <span class="rank-num" id="rank-num">#?</span>
+      <p class="rank-sub">among all scored games this season</p>
+      <a href="/leaderboard/" class="rank-lb-link">View Full Leaderboard →</a>
+    </div>
+    <p class="submit-error" id="submit-error"></p>
+  </div>
+
+  <div class="end-table-wrap">
+    <table class="end-table">
+      <thead>
+        <tr>
+          <th class="th-photo">Photo</th>
+          <th class="th-mile">Correct Mile</th>
+          <th class="th-guess">Your Guess</th>
+          <th class="th-score">Score</th>
+        </tr>
+      </thead>
+      <tbody id="end-tbody"></tbody>
+    </table>
+  </div>
+  <div class="end-actions">
+    <a href="/" class="btn-green">Play Again</a>
+    <a href="/leaderboard/" class="btn-outline">Leaderboard →</a>
+  </div>
+</div>
+
+<!-- ════════════════ LIGHTBOX ════════════════ -->
+<div id="lightbox">
+  <div class="lightbox-close" onclick="closeLightbox()">✕</div>
+  <img id="lb-img" src="" alt="">
+  <div class="lightbox-caption" id="lb-caption"></div>
+</div>
+
+<!-- ════════════════ NAVIGATION INTERRUPT MODAL ════════════════ -->
+<div id="nav-interrupt-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:200;align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:30px 28px 24px;max-width:360px;width:100%;text-align:center;display:flex;flex-direction:column;align-items:center;gap:16px;box-shadow:0 24px 72px rgba(0,0,0,.75)">
+    <div style="font-size:36px">⚠️</div>
+    <div style="font-size:19px;font-weight:800;color:var(--text)">Game Interrupted</div>
+    <div style="font-size:14px;color:var(--muted);line-height:1.6">Navigating away during a game resets your progress.<br>Your current game has been cleared.</div>
+    <button id="nav-interrupt-ok" style="background:var(--pct-green);color:#fff;border:none;border-radius:10px;padding:12px 32px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;transition:filter .15s" onmouseover="this.style.filter='brightness(1.25)'" onmouseout="this.style.filter=''">OK</button>
+  </div>
+</div>
+
+<script>
+const photos = [{"id": "tvqha", "mile": "20", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/tvqha.jpeg", "photo_by": "", "tags": ""}, {"id": "rbrin", "mile": "25", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/rbrin.jpeg", "photo_by": "", "tags": ""}, {"id": "knhwx", "mile": "29", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/knhwx.jpeg", "photo_by": "", "tags": ""}, {"id": "lpbzl", "mile": "40", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/lpbzl.jpeg", "photo_by": "", "tags": ""}, {"id": "cxfxk", "mile": "43", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/cxfxk.jpeg", "photo_by": "", "tags": ""}, {"id": "byygb", "mile": "53.3", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/byygb.jpeg", "photo_by": "", "tags": ""}, {"id": "jqglv", "mile": "62.5", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/jqglv.jpeg", "photo_by": "", "tags": ""}, {"id": "tjyif", "mile": "63", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/tjyif.jpeg", "photo_by": "", "tags": ""}, {"id": "uhupm", "mile": "74.5", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/uhupm.jpeg", "photo_by": "", "tags": ""}, {"id": "yytkd", "mile": "89", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/yytkd.jpeg", "photo_by": "", "tags": ""}, {"id": "biult", "mile": "101", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/biult.jpeg", "photo_by": "", "tags": ""}, {"id": "ubgxz", "mile": "102", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ubgxz.jpeg", "photo_by": "", "tags": ""}, {"id": "rksxg", "mile": "103", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/rksxg.jpeg", "photo_by": "", "tags": ""}, {"id": "fuwlm", "mile": "106", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/fuwlm.jpeg", "photo_by": "", "tags": ""}, {"id": "qnqbe", "mile": "110.5", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/qnqbe.jpeg", "photo_by": "", "tags": ""}, {"id": "pndxj", "mile": "115", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/pndxj.jpeg", "photo_by": "", "tags": ""}, {"id": "vszxp", "mile": "139", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/vszxp.jpeg", "photo_by": "", "tags": ""}, {"id": "oitup", "mile": "150", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/oitup.jpeg", "photo_by": "", "tags": ""}, {"id": "hpsld", "mile": "170", "direction": "SoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/hpsld.jpeg", "photo_by": "", "tags": ""}, {"id": "zknuh", "mile": "189", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/zknuh.jpeg", "photo_by": "", "tags": ""}, {"id": "ajipl", "mile": "190.5", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ajipl.jpeg", "photo_by": "", "tags": ""}, {"id": "pcfcy", "mile": "191", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/pcfcy.jpeg", "photo_by": "", "tags": ""}, {"id": "spjst", "mile": "197.3", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/spjst.jpeg", "photo_by": "", "tags": ""}, {"id": "vacfd", "mile": "232.2", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/vacfd.jpeg", "photo_by": "", "tags": ""}, {"id": "kspxy", "mile": "234.7", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/kspxy.jpeg", "photo_by": "", "tags": ""}, {"id": "aekaf", "mile": "240", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/aekaf.jpeg", "photo_by": "", "tags": ""}, {"id": "jxpqu", "mile": "244", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/jxpqu.jpeg", "photo_by": "", "tags": ""}, {"id": "gyrzk", "mile": "247", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/gyrzk.jpeg", "photo_by": "", "tags": ""}, {"id": "trqkv", "mile": "269", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/trqkv.jpeg", "photo_by": "", "tags": ""}, {"id": "mraia", "mile": "270", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/mraia.jpeg", "photo_by": "", "tags": ""}, {"id": "ffspl", "mile": "279", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ffspl.jpeg", "photo_by": "", "tags": ""}, {"id": "bpvks", "mile": "286", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/bpvks.jpeg", "photo_by": "", "tags": ""}, {"id": "rbmve", "mile": "298.5", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/rbmve.jpeg", "photo_by": "", "tags": ""}, {"id": "hqxch", "mile": "312.5", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/hqxch.jpeg", "photo_by": "", "tags": ""}, {"id": "dmodk", "mile": "313.8", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/dmodk.jpeg", "photo_by": "", "tags": ""}, {"id": "fvbzk", "mile": "330", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/fvbzk.jpeg", "photo_by": "", "tags": ""}, {"id": "hewrp", "mile": "341", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/hewrp.jpeg", "photo_by": "", "tags": ""}, {"id": "xrwqq", "mile": "356", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/xrwqq.jpeg", "photo_by": "", "tags": ""}, {"id": "ufiyn", "mile": "389.5", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ufiyn.jpeg", "photo_by": "", "tags": ""}, {"id": "vopjj", "mile": "396", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/vopjj.jpeg", "photo_by": "", "tags": ""}, {"id": "jzadu", "mile": "412", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/jzadu.jpeg", "photo_by": "", "tags": ""}, {"id": "uwkyk", "mile": "412", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/uwkyk.jpeg", "photo_by": "", "tags": ""}, {"id": "fyvke", "mile": "415", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/fyvke.jpeg", "photo_by": "", "tags": ""}, {"id": "ixxmc", "mile": "434", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ixxmc.jpeg", "photo_by": "", "tags": ""}, {"id": "wuvbn", "mile": "438", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/wuvbn.jpeg", "photo_by": "", "tags": ""}, {"id": "mhebs", "mile": "444", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/mhebs.jpeg", "photo_by": "", "tags": ""}, {"id": "dahoh", "mile": "450", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/dahoh.jpeg", "photo_by": "", "tags": ""}, {"id": "fuvsk", "mile": "506", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/fuvsk.jpeg", "photo_by": "", "tags": ""}, {"id": "rqtua", "mile": "522", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/rqtua.jpeg", "photo_by": "", "tags": ""}, {"id": "yaeti", "mile": "530.3", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/yaeti.jpeg", "photo_by": "", "tags": ""}, {"id": "hyziv", "mile": "548", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/hyziv.jpeg", "photo_by": "", "tags": ""}, {"id": "mflsv", "mile": "556", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/mflsv.jpeg", "photo_by": "", "tags": ""}, {"id": "vaxdx", "mile": "557", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/vaxdx.jpeg", "photo_by": "", "tags": ""}, {"id": "lbziq", "mile": "563", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/lbziq.jpeg", "photo_by": "", "tags": ""}, {"id": "sroyo", "mile": "629", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/sroyo.jpeg", "photo_by": "", "tags": ""}, {"id": "fnryg", "mile": "630", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/fnryg.jpeg", "photo_by": "", "tags": ""}, {"id": "fpxvv", "mile": "632", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/fpxvv.jpeg", "photo_by": "", "tags": ""}, {"id": "ssssh", "mile": "675", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ssssh.jpeg", "photo_by": "", "tags": ""}, {"id": "lfonr", "mile": "680", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/lfonr.jpeg", "photo_by": "", "tags": ""}, {"id": "nntev", "mile": "684", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/nntev.jpeg", "photo_by": "", "tags": ""}, {"id": "ncomw", "mile": "695", "direction": "NoBo", "section": "Southern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ncomw.jpeg", "photo_by": "", "tags": ""}, {"id": "dxaqm", "mile": "711", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/dxaqm.jpeg", "photo_by": "", "tags": ""}, {"id": "deuvo", "mile": "713", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/deuvo.jpeg", "photo_by": "", "tags": ""}, {"id": "qsfna", "mile": "736", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/qsfna.jpeg", "photo_by": "", "tags": ""}, {"id": "jequz", "mile": "747", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/jequz.jpeg", "photo_by": "", "tags": ""}, {"id": "ebauk", "mile": "750", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ebauk.jpeg", "photo_by": "", "tags": ""}, {"id": "jhjnn", "mile": "759", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/jhjnn.jpeg", "photo_by": "", "tags": ""}, {"id": "ullnh", "mile": "775", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ullnh.jpeg", "photo_by": "", "tags": ""}, {"id": "rhlnl", "mile": "780", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/rhlnl.jpeg", "photo_by": "", "tags": ""}, {"id": "rylzr", "mile": "785", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/rylzr.jpeg", "photo_by": "", "tags": ""}, {"id": "qlful", "mile": "794.3", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/qlful.jpeg", "photo_by": "", "tags": ""}, {"id": "gznbz", "mile": "798", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/gznbz.jpeg", "photo_by": "", "tags": ""}, {"id": "ctsrc", "mile": "808", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ctsrc.jpeg", "photo_by": "", "tags": ""}, {"id": "sjtio", "mile": "813.6", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/sjtio.jpeg", "photo_by": "", "tags": ""}, {"id": "oxqir", "mile": "815", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/oxqir.jpeg", "photo_by": "", "tags": ""}, {"id": "tbifd", "mile": "819", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/tbifd.jpeg", "photo_by": "", "tags": ""}, {"id": "yskti", "mile": "820", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/yskti.jpeg", "photo_by": "", "tags": ""}, {"id": "vzmny", "mile": "837", "direction": "SoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/vzmny.jpeg", "photo_by": "", "tags": ""}, {"id": "xhhnh", "mile": "837", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/xhhnh.jpeg", "photo_by": "", "tags": ""}, {"id": "ziawl", "mile": "842", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ziawl.jpeg", "photo_by": "", "tags": ""}, {"id": "gidhq", "mile": "865", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/gidhq.jpeg", "photo_by": "", "tags": ""}, {"id": "qnfcl", "mile": "932", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/qnfcl.jpeg", "photo_by": "", "tags": ""}, {"id": "nzbyx", "mile": "935", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/nzbyx.jpeg", "photo_by": "", "tags": ""}, {"id": "sgzea", "mile": "948", "direction": "SoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/sgzea.jpeg", "photo_by": "", "tags": ""}, {"id": "awsnv", "mile": "953", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/awsnv.jpeg", "photo_by": "", "tags": ""}, {"id": "bcpjo", "mile": "974", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/bcpjo.jpeg", "photo_by": "", "tags": ""}, {"id": "miskm", "mile": "976", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/miskm.jpeg", "photo_by": "", "tags": ""}, {"id": "rdftm", "mile": "987", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/rdftm.jpeg", "photo_by": "green-tunnel", "tags": "green-tunnel"}, {"id": "einiv", "mile": "1010", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/einiv.jpeg", "photo_by": "", "tags": ""}, {"id": "ukwsn", "mile": "1019", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ukwsn.jpeg", "photo_by": "", "tags": ""}, {"id": "rlewf", "mile": "1036", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/rlewf.jpeg", "photo_by": "", "tags": ""}, {"id": "afdwg", "mile": "1044", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/afdwg.jpeg", "photo_by": "", "tags": ""}, {"id": "lpoan", "mile": "1044", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/lpoan.jpeg", "photo_by": "", "tags": ""}, {"id": "zayed", "mile": "1046", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/zayed.jpeg", "photo_by": "", "tags": ""}, {"id": "zmtqp", "mile": "1059", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/zmtqp.jpeg", "photo_by": "", "tags": ""}, {"id": "xizdy", "mile": "1070", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/xizdy.jpeg", "photo_by": "", "tags": ""}, {"id": "vteop", "mile": "1080", "direction": "NoBo", "section": "The Sierra", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/vteop.jpeg", "photo_by": "green-tunnel", "tags": "green-tunnel"}, {"id": "mcyor", "mile": "1100", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/mcyor.jpeg", "photo_by": "", "tags": ""}, {"id": "nfuqt", "mile": "1107", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/nfuqt.jpeg", "photo_by": "", "tags": ""}, {"id": "tdbhc", "mile": "1148", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/tdbhc.jpeg", "photo_by": "", "tags": ""}, {"id": "xllmk", "mile": "1152", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/xllmk.jpeg", "photo_by": "", "tags": ""}, {"id": "zzsgp", "mile": "1167", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/zzsgp.jpeg", "photo_by": "", "tags": ""}, {"id": "ywfzx", "mile": "1187", "direction": "SoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ywfzx.jpeg", "photo_by": "", "tags": ""}, {"id": "tnpbz", "mile": "1213", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/tnpbz.jpeg", "photo_by": "green-tunnel", "tags": "green-tunnel"}, {"id": "xspsv", "mile": "1230", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/xspsv.jpeg", "photo_by": "green-tunnel", "tags": "green-tunnel"}, {"id": "zrzls", "mile": "1241", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/zrzls.jpeg", "photo_by": "", "tags": ""}, {"id": "eldnm", "mile": "1258", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/eldnm.jpeg", "photo_by": "green-tunnel", "tags": "green-tunnel"}, {"id": "iltnn", "mile": "1273", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/iltnn.jpeg", "photo_by": "green-tunnel", "tags": "green-tunnel"}, {"id": "iqlir", "mile": "1279", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/iqlir.jpeg", "photo_by": "", "tags": ""}, {"id": "hxbqq", "mile": "1308", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/hxbqq.jpeg", "photo_by": "", "tags": ""}, {"id": "csijg", "mile": "1323", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/csijg.jpeg", "photo_by": "", "tags": ""}, {"id": "ynpwt", "mile": "1335", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ynpwt.jpeg", "photo_by": "", "tags": ""}, {"id": "pvyrk", "mile": "1363", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/pvyrk.jpeg", "photo_by": "", "tags": ""}, {"id": "ziouu", "mile": "1398", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ziouu.jpeg", "photo_by": "", "tags": ""}, {"id": "jkvwy", "mile": "1401", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/jkvwy.jpeg", "photo_by": "", "tags": ""}, {"id": "ruqnz", "mile": "1414", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ruqnz.jpeg", "photo_by": "green-tunnel", "tags": "green-tunnel"}, {"id": "ehhcc", "mile": "1439", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ehhcc.jpeg", "photo_by": "", "tags": ""}, {"id": "jnetu", "mile": "1467", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/jnetu.jpeg", "photo_by": "green-tunnel", "tags": "green-tunnel"}, {"id": "udqvd", "mile": "1518", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/udqvd.jpeg", "photo_by": "", "tags": ""}, {"id": "wzmuo", "mile": "1544", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/wzmuo.jpeg", "photo_by": "", "tags": ""}, {"id": "frpkz", "mile": "1551", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/frpkz.jpeg", "photo_by": "", "tags": ""}, {"id": "hqwpw", "mile": "1564.5", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/hqwpw.jpeg", "photo_by": "", "tags": ""}, {"id": "fwpjl", "mile": "1581", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/fwpjl.jpeg", "photo_by": "", "tags": ""}, {"id": "yvlej", "mile": "1599", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/yvlej.jpeg", "photo_by": "", "tags": ""}, {"id": "uodxd", "mile": "1600", "direction": "NoBo", "section": "Northern California", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/uodxd.jpeg", "photo_by": "", "tags": ""}, {"id": "bxejf", "mile": "1723", "direction": "NoBo", "section": "Oregon", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/bxejf.jpeg", "photo_by": "", "tags": ""}, {"id": "xmgqd", "mile": "1726", "direction": "NoBo", "section": "Oregon", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/xmgqd.jpeg", "photo_by": "green-tunnel", "tags": "green-tunnel"}, {"id": "slwyg", "mile": "1759", "direction": "NoBo", "section": "Oregon", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/slwyg.jpeg", "photo_by": "", "tags": ""}, {"id": "usoip", "mile": "1760", "direction": "NoBo", "section": "Oregon", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/usoip.jpeg", "photo_by": "green-tunnel", "tags": "green-tunnel"}, {"id": "txcaw", "mile": "1760", "direction": "NoBo", "section": "Oregon", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/txcaw.jpeg", "photo_by": "green-tunnel", "tags": "green-tunnel"}, {"id": "eisgn", "mile": "1764", "direction": "NoBo", "section": "Oregon", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/eisgn.jpeg", "photo_by": "green-tunnel", "tags": "green-tunnel"}, {"id": "xbcss", "mile": "1793", "direction": "NoBo", "section": "Oregon", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/xbcss.jpeg", "photo_by": "", "tags": ""}, {"id": "tbvpn", "mile": "1793.3", "direction": "NoBo", "section": "Oregon", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/tbvpn.jpg", "photo_by": "", "tags": ""}, {"id": "zhsat", "mile": "1798", "direction": "NoBo", "section": "Oregon", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/zhsat.jpeg", "photo_by": "", "tags": ""}, {"id": "qlwws", "mile": "1800", "direction": "NoBo", "section": "Oregon", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/qlwws.jpeg", "photo_by": "", "tags": ""}, {"id": "rihup", "mile": "1800", "direction": "NoBo", "section": "Oregon", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/rihup.jpeg", "photo_by": "", "tags": ""}, {"id": "jorzp", "mile": "1810", "direction": "NoBo", "section": "Oregon", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/jorzp.jpeg", "photo_by": "", "tags": ""}, {"id": "pznmc", "mile": "1815", "direction": "NoBo", "section": "Oregon", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/pznmc.jpeg", "photo_by": "", "tags": ""}, {"id": "jdczl", "mile": "1816.3", "direction": "NoBo", "section": "Oregon", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/jdczl.jpeg", "photo_by": "", "tags": ""}, {"id": "kshms", "mile": "2003", "direction": "NoBo", "section": "Oregon", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/kshms.jpeg", "photo_by": "", "tags": ""}, {"id": "hyxpv", "mile": "2017", "direction": "NoBo", "section": "Oregon", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/hyxpv.jpeg", "photo_by": "", "tags": ""}, {"id": "ffhmf", "mile": "2039", "direction": "NoBo", "section": "Oregon", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ffhmf.jpeg", "photo_by": "", "tags": ""}, {"id": "bpcmd", "mile": "2044", "direction": "NoBo", "section": "Oregon", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/bpcmd.jpeg", "photo_by": "", "tags": ""}, {"id": "fvihf", "mile": "2049", "direction": "NoBo", "section": "Oregon", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/fvihf.jpeg", "photo_by": "", "tags": ""}, {"id": "gaepn", "mile": "2051", "direction": "NoBo", "section": "Oregon", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/gaepn.jpeg", "photo_by": "", "tags": ""}, {"id": "npgon", "mile": "2081.5", "direction": "NoBo", "section": "Oregon", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/npgon.jpeg", "photo_by": "", "tags": ""}, {"id": "thjqx", "mile": "2089", "direction": "NoBo", "section": "Oregon", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/thjqx.jpeg", "photo_by": "green-tunnel", "tags": "green-tunnel"}, {"id": "smeqj", "mile": "2099", "direction": "NoBo", "section": "Oregon", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/smeqj.jpeg", "photo_by": "", "tags": ""}, {"id": "yajmn", "mile": "2403", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/yajmn.jpeg", "photo_by": "", "tags": ""}, {"id": "bcepq", "mile": "2405", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/bcepq.jpeg", "photo_by": "", "tags": ""}, {"id": "ajudz", "mile": "2407", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ajudz.jpeg", "photo_by": "", "tags": ""}, {"id": "yazop", "mile": "2409", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/yazop.jpeg", "photo_by": "", "tags": ""}, {"id": "bhmdx", "mile": "2410", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/bhmdx.jpeg", "photo_by": "", "tags": ""}, {"id": "bgmmk", "mile": "2418", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/bgmmk.jpeg", "photo_by": "green-tunnel", "tags": "green-tunnel"}, {"id": "vcpve", "mile": "2429", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/vcpve.jpeg", "photo_by": "", "tags": ""}, {"id": "qykwv", "mile": "2438", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/qykwv.jpeg", "photo_by": "", "tags": ""}, {"id": "shkvj", "mile": "2458", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/shkvj.jpeg", "photo_by": "green-tunnel", "tags": "green-tunnel"}, {"id": "irwuc", "mile": "2465", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/irwuc.jpeg", "photo_by": "", "tags": ""}, {"id": "axntz", "mile": "2467.4", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/axntz.jpeg", "photo_by": "", "tags": ""}, {"id": "pexnz", "mile": "2473", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/pexnz.jpeg", "photo_by": "", "tags": ""}, {"id": "ixjer", "mile": "2479", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ixjer.jpeg", "photo_by": "", "tags": ""}, {"id": "jqzue", "mile": "2481.7", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/jqzue.jpeg", "photo_by": "", "tags": ""}, {"id": "mdzvx", "mile": "2482", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/mdzvx.jpeg", "photo_by": "", "tags": ""}, {"id": "oczmj", "mile": "2496", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/oczmj.jpeg", "photo_by": "", "tags": ""}, {"id": "tbrwd", "mile": "2497", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/tbrwd.jpeg", "photo_by": "", "tags": ""}, {"id": "smyck", "mile": "2500.1", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/smyck.jpeg", "photo_by": "", "tags": ""}, {"id": "jjtzi", "mile": "2505.3", "direction": "SoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/jjtzi.jpeg", "photo_by": "", "tags": ""}, {"id": "jmlcu", "mile": "2505.5", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/jmlcu.jpeg", "photo_by": "", "tags": ""}, {"id": "bqcmk", "mile": "2510", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/bqcmk.jpeg", "photo_by": "green-tunnel", "tags": "green-tunnel"}, {"id": "hjocr", "mile": "2510.8", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/hjocr.jpeg", "photo_by": "", "tags": ""}, {"id": "kccve", "mile": "2523", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/kccve.jpeg", "photo_by": "", "tags": ""}, {"id": "gimar", "mile": "2527", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/gimar.jpeg", "photo_by": "green-tunnel", "tags": "green-tunnel"}, {"id": "wvkjt", "mile": "2532", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/wvkjt.jpeg", "photo_by": "green-tunnel", "tags": "green-tunnel"}, {"id": "ivkqo", "mile": "2533", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ivkqo.jpeg", "photo_by": "", "tags": ""}, {"id": "mpuwv", "mile": "2534", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/mpuwv.jpeg", "photo_by": "", "tags": ""}, {"id": "vwldn", "mile": "2541", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/vwldn.jpeg", "photo_by": "green-tunnel", "tags": "green-tunnel"}, {"id": "jacwb", "mile": "2542", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/jacwb.jpeg", "photo_by": "green-tunnel", "tags": "green-tunnel"}, {"id": "olzak", "mile": "2555.2", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/olzak.jpeg", "photo_by": "", "tags": ""}, {"id": "wbdhw", "mile": "2573", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/wbdhw.jpeg", "photo_by": "green-tunnel", "tags": "green-tunnel"}, {"id": "ozeph", "mile": "2582.9", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ozeph.jpeg", "photo_by": "", "tags": ""}, {"id": "kmhib", "mile": "2587", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/kmhib.jpeg", "photo_by": "", "tags": ""}, {"id": "rzzub", "mile": "2599.8", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/rzzub.jpeg", "photo_by": "", "tags": ""}, {"id": "nblam", "mile": "2600", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/nblam.jpeg", "photo_by": "", "tags": ""}, {"id": "pfpkj", "mile": "2601", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/pfpkj.jpeg", "photo_by": "", "tags": ""}, {"id": "ceqbf", "mile": "2617", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ceqbf.jpeg", "photo_by": "", "tags": ""}, {"id": "bzzea", "mile": "2619", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/bzzea.jpeg", "photo_by": "", "tags": ""}, {"id": "qytaf", "mile": "2621", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/qytaf.jpeg", "photo_by": "", "tags": ""}, {"id": "frhje", "mile": "2632", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/frhje.jpeg", "photo_by": "", "tags": ""}, {"id": "zpvlr", "mile": "2637", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/zpvlr.jpeg", "photo_by": "green-tunnel", "tags": "green-tunnel"}, {"id": "mdifw", "mile": "2642", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/mdifw.jpeg", "photo_by": "", "tags": ""}, {"id": "ypofk", "mile": "2645", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/ypofk.jpeg", "photo_by": "", "tags": ""}, {"id": "tifcx", "mile": "2655.6", "direction": "NoBo", "section": "Washington", "date": "Summer 2025", "url": "https://pct-geoguesser.pages.dev/miles/tifcx.jpeg", "photo_by": "", "tags": ""}];
+
+// ── Supabase ──────────────────────────────────────────────
+const { createClient } = supabase;
+const sb = createClient('https://alrjrplclssjgpxqxzvk.supabase.co', 'sb_publishable_LxFCbmdg9ZlhDbr2np_ufQ_RcWTgcS8');
+
+let currentUser      = null;
+let currentProfile   = null;
+let isEditingProfile = false;
+
+sb.auth.onAuthStateChange(async (event, session) => {
+  if (event === 'INITIAL_SESSION') {
+    if (session) {
+      currentUser = session.user;
+      await loadProfile();
+    } else {
+      showScreen('screen-auth');
+    }
+  } else if (event === 'SIGNED_OUT') {
+    currentUser = null;
+    currentProfile = null;
+    showScreen('screen-auth');
+  }
+});
+
+async function loadProfile() {
+  const { data } = await sb
+    .from('profiles')
+    .select('trail_name, pct_year, about')
+    .eq('id', currentUser.id)
+    .maybeSingle();
+  if (data) {
+    currentProfile = data;
+    const greetEl = document.getElementById('greeting-name');
+    greetEl.textContent = data.trail_name;
+    greetEl.href = `/hiker/?id=${currentUser.id}`;
+    prepareNextGame();
+    showScreen('screen-start');
+  } else {
+    showScreen('screen-signup');
+  }
+}
+
+async function signInWithGoogle() {
+  const btn = document.getElementById('btn-google');
+  btn.disabled = true;
+  btn.querySelector('svg').style.display = 'none';
+  btn.childNodes[btn.childNodes.length - 1].textContent = ' Redirecting…';
+  await sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: 'https://pct-geoguesser.economicurtis.com/game/' },
+  });
+}
+
+async function saveProfile() {
+  const trailName = document.getElementById('trail-name-input').value.trim();
+  const pctYear   = document.getElementById('pct-year-input').value.trim();
+  const about     = document.getElementById('about-input').value.trim();
+  const errEl     = document.getElementById('signup-error');
+  const btn       = document.getElementById('btn-save-profile');
+  errEl.textContent = '';
+  if (!trailName) { errEl.textContent = 'Trail name is required.'; return; }
+  if (!pctYear)   { errEl.textContent = 'PCT year is required.';   return; }
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  const hintEl = document.getElementById('save-slow-hint');
+  hintEl.style.display = 'none';
+  const slowTimer = setTimeout(() => {
+    hintEl.style.display = 'block';
+    btn.textContent = 'Still saving…';
+  }, 5000);
+  const { error } = await sb.from('profiles').upsert({
+    id:         currentUser.id,
+    trail_name: trailName,
+    pct_year:   pctYear,
+    about:      about || null,
+  });
+  clearTimeout(slowTimer);
+  hintEl.style.display = 'none';
+  if (error) {
+    errEl.textContent = 'Error saving profile. Please try again.';
+    btn.disabled = false;
+    btn.textContent = isEditingProfile ? 'Save Changes' : 'Save and Play →';
+    return;
+  }
+  currentProfile = { trail_name: trailName, pct_year: pctYear, about: about || null };
+  const greetEl = document.getElementById('greeting-name');
+  greetEl.textContent = trailName;
+  greetEl.href = `/hiker/?id=${currentUser.id}`;
+  document.getElementById('signup-subtitle').textContent = 'One-time setup — your name and year appear on the leaderboard.';
+  document.getElementById('signup-cancel').style.display = 'none';
+  btn.textContent = 'Save and Play →';
+  isEditingProfile = false;
+  prepareNextGame();
+  showScreen('screen-start');
+}
+
+function showEditProfile() {
+  isEditingProfile = true;
+  document.getElementById('trail-name-input').value = currentProfile?.trail_name || '';
+  document.getElementById('pct-year-input').value   = currentProfile?.pct_year   || '';
+  document.getElementById('about-input').value      = currentProfile?.about      || '';
+  updateAboutCount();
+  document.getElementById('signup-error').textContent = '';
+  document.getElementById('signup-subtitle').textContent = 'Update your hiker profile.';
+  document.getElementById('btn-save-profile').textContent = 'Save Changes';
+  document.getElementById('btn-save-profile').disabled = false;
+  document.getElementById('signup-cancel').style.display = 'block';
+  showScreen('screen-signup');
+}
+
+function cancelEditProfile() {
+  isEditingProfile = false;
+  document.getElementById('signup-subtitle').textContent = 'One-time setup — your name and year appear on the leaderboard.';
+  document.getElementById('btn-save-profile').textContent = 'Save and Play →';
+  document.getElementById('signup-cancel').style.display = 'none';
+  showScreen('screen-start');
+}
+
+function updateAboutCount() {
+  const n = document.getElementById('about-input').value.length;
+  document.getElementById('about-char-count').textContent = `(${n}/500)`;
+}
+
+async function signOut() {
+  await sb.auth.signOut();
+}
+
+// ── Config ────────────────────────────────────────────────
+const TIMER_SEC   = 60;
+const FULL_CREDIT = 3;
+const GAME_SIZE   = 10;
+const MAX_TOTAL   = 2655.8;
+const PER_PHOTO   = MAX_TOTAL / GAME_SIZE;   // 265.58 pts per photo
+
+// ── State ─────────────────────────────────────────────────
+let gamePhotos = [], currentIdx = 0;
+let scores = [], guesses = [], perfects = [];
+let timerHandle = null, timeLeft = TIMER_SEC;
+
+// ── Image preloading ──────────────────────────────────────
+const _preloadCache = {};
+
+// Returns a Promise that resolves when the image is fully loaded (or fails).
+// Subsequent calls for the same URL return the same cached promise — never
+// re-fetches. Calling code can safely await this multiple times.
+function preloadImage(url) {
+  if (!_preloadCache[url]) {
+    const img = new Image();
+    _preloadCache[url] = {
+      img,
+      promise: new Promise(resolve => {
+        img.onload  = resolve;
+        img.onerror = resolve;  // resolve on error too — never block forever
+        img.src = url;
+      })
+    };
+  }
+  return _preloadCache[url].promise;
+}
+
+function prepareNextGame() {
+  gamePhotos = selectGamePhotos();
+  // Kick off background downloads for all 10 photos immediately.
+  // By the time the player reaches photo 2+, those images will be cached.
+  gamePhotos.forEach(p => preloadImage(p.url));
+}
+
+// ── Slider thumb: tri-colour gradient dot ─────────────────
+const _SECTION_COLORS = [
+  { start:    0,   end:  702.1, rgb: [200,169,110] },
+  { start:  702.1, end: 1092.3, rgb: [216,216,216] },
+  { start: 1092.3, end: 1692.0, rgb: [ 42,176, 98] },
+  { start: 1692.0, end: 2147.0, rgb: [  0,128,128] },
+  { start: 2147.0, end: 2655.5, rgb: [ 29, 80, 46] },
+];
+
+function _lerp(c0, c1, t) { return c0.map((v, i) => Math.round(v + (c1[i] - v) * t)); }
+function _rgb(c)           { return `rgb(${c[0]},${c[1]},${c[2]})`; }
+
+function updateThumbColors(mile) {
+  let si = 0;
+  while (si < _SECTION_COLORS.length - 1 && mile >= _SECTION_COLORS[si + 1].start) si++;
+  const sec = _SECTION_COLORS[si];
+  const t = (mile - sec.start) / (sec.end - sec.start);
+  const center       = sec.rgb;
+  const leftNeighbor  = si > 0                            ? _SECTION_COLORS[si - 1].rgb : center;
+  const rightNeighbor = si < _SECTION_COLORS.length - 1  ? _SECTION_COLORS[si + 1].rgb : center;
+  const leftEdge  = _lerp(leftNeighbor,  center, t);
+  const rightEdge = _lerp(rightNeighbor, center, 1 - t);
+  const sl = document.getElementById('trail-slider');
+  sl.style.setProperty('--thumb-left',   _rgb(leftEdge));
+  sl.style.setProperty('--thumb-center', _rgb(center));
+  sl.style.setProperty('--thumb-right',  _rgb(rightEdge));
+  sl.style.setProperty('--thumb-glow',   `rgba(${center[0]},${center[1]},${center[2]},.4)`);
+}
+
+// ── Screens ───────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ── Photo selection: 2 random photos from each PCT section (≥20 miles apart) ──
+const _PCT_SECTIONS = [
+  'Southern California', 'The Sierra',
+  'Northern California', 'Oregon', 'Washington',
+];
+const _PER_SECTION      = 2;
+const _MIN_MILES_APART  = 20;  // minimum gap between the two picks per section
+const _GREEN_TUNNEL_CAP = 2;   // max "green tunnel" photos per game
+
+// Returns true if a photo is tagged "green-tunnel"
+function _isGT(p) {
+  return (p.tags || '').split(',').map(t => t.trim()).includes('green-tunnel');
+}
+
+function selectGamePhotos() {
+  const selected = [];
+  let gtCount = 0;
+
+  for (const sec of _PCT_SECTIONS) {
+    const pool = photos.filter(p => p.section === sec).sort(() => Math.random() - .5);
+    if (pool.length <= _PER_SECTION) {
+      for (const c of pool) {
+        if (_isGT(c) && gtCount >= _GREEN_TUNNEL_CAP) continue;
+        selected.push(c);
+        if (_isGT(c)) gtCount++;
+      }
+      continue;
+    }
+    // Pick 2 ≥ _MIN_MILES_APART apart, preferring non-green-tunnel
+    const picks = [];
+    for (const c of pool) {
+      if (picks.length >= _PER_SECTION) break;
+      const tooClose = picks.some(q => Math.abs(parseFloat(q.mile) - parseFloat(c.mile)) < _MIN_MILES_APART);
+      if (tooClose || (_isGT(c) && gtCount >= _GREEN_TUNNEL_CAP)) continue;
+      picks.push(c);
+      if (_isGT(c)) gtCount++;
+    }
+    // Fallback 1: relax GT cap, keep distance constraint
+    if (picks.length < _PER_SECTION) {
+      for (const c of pool) {
+        if (picks.length >= _PER_SECTION) break;
+        if (picks.includes(c)) continue;
+        const tooClose = picks.some(q => Math.abs(parseFloat(q.mile) - parseFloat(c.mile)) < _MIN_MILES_APART);
+        if (!tooClose) { picks.push(c); if (_isGT(c)) gtCount++; }
+      }
+    }
+    // Fallback 2: relax distance too
+    if (picks.length < _PER_SECTION) {
+      for (const c of pool) {
+        if (picks.length >= _PER_SECTION) break;
+        if (!picks.includes(c)) { picks.push(c); if (_isGT(c)) gtCount++; }
+      }
+    }
+    selected.push(...picks);
+  }
+  return selected.sort(() => Math.random() - .5);
+}
+
+// ── Scoring ───────────────────────────────────────────────
+function calcScore(guess, trueMile) {
+  const effDiff = Math.max(0, Math.abs(guess - trueMile) - FULL_CREDIT);
+  return PER_PHOTO * Math.exp(-10 * effDiff / MAX_TOTAL);
+}
+
+function isPerfect(guess, trueMile) {
+  return Math.abs(guess - trueMile) <= FULL_CREDIT;
+}
+
+function getVerdictInfo(guess, trueMile) {
+  const diff = guess - trueMile;
+  if (Math.abs(diff) <= FULL_CREDIT) return { text: 'Spot On! 🎯',                        cls: 'spoton' };
+  if (diff > 0)                      return { text: `${fmt(diff)} Miles North`,           cls: 'north'  };
+  return                                    { text: `${fmt(Math.abs(diff))} Miles South`, cls: 'south'  };
+}
+
+function fmt(n) { return Math.round(n).toLocaleString(); }
+
+// ── Timer ─────────────────────────────────────────────────
+function stopTimer() {
+  if (timerHandle) { clearInterval(timerHandle); timerHandle = null; }
+}
+
+function startTimer() {
+  timeLeft = TIMER_SEC;
+  renderTimer();
+  timerHandle = setInterval(() => {
+    timeLeft--;
+    renderTimer();
+    if (timeLeft <= 0) {
+      stopTimer();
+      const raw = document.getElementById('mile-input').value.trim();
+      raw ? processGuess(parseFloat(raw), false) : processGuess(null, true);
+    }
+  }, 1000);
+}
+
+function renderTimer() {
+  document.getElementById('timer-fill').style.width = (timeLeft / TIMER_SEC * 100) + '%';
+  document.getElementById('timer-num').textContent  = timeLeft;
+}
+
+// ── Game flow ─────────────────────────────────────────────
+function startGame() {
+  currentIdx = 0; scores = []; guesses = []; perfects = [];
+  showGuessScreen();
+}
+
+async function showGuessScreen() {
+  const p = gamePhotos[currentIdx];
+
+  // Trigger the download immediately (may already be cached from prepareNextGame)
+  const loadPromise = preloadImage(p.url);
+
+  // Set up all UI except the photo
+  document.getElementById('g-cur').textContent    = currentIdx + 1;
+  document.getElementById('g-tot').textContent    = gamePhotos.length;
+  document.getElementById('g-season').textContent = p.date;
+  const dirEl = document.getElementById('g-direction');
+  dirEl.textContent = p.direction;
+  dirEl.className   = 'hint-chip ' + (p.direction === 'SoBo' ? 'hint-sobo' : 'hint-nobo');
+  const creditEl = document.getElementById('g-photo-by');
+  if (p.photo_by) {
+    creditEl.textContent  = '📷 ' + p.photo_by;
+    creditEl.style.display = '';
+  } else {
+    creditEl.style.display = 'none';
+  }
+  const input = document.getElementById('mile-input');
+  input.value = '';
+  document.getElementById('trail-slider').value = 0;
+  updateThumbColors(0);
+  if (window.resetPhotoZoom) window.resetPhotoZoom();
+
+  // Block on photo load before revealing the screen + starting the timer.
+  // Shows "Get ready…" if the download takes more than a frame (slow connection).
+  const cached = _preloadCache[p.url];
+  if (!cached || !cached.img.complete || cached.img.naturalWidth === 0) {
+    document.querySelector('.loading-text').textContent = 'Get ready…';
+    showScreen('screen-loading');
+    await loadPromise;
+  }
+
+  document.getElementById('g-photo').src = p.url;
+  showScreen('screen-guess');
+  setTimeout(() => input.focus(), 80);
+  startTimer();
+}
+
+function submitGuess() {
+  const raw = document.getElementById('mile-input').value.trim();
+  if (!raw) return;
+  stopTimer();
+  processGuess(parseFloat(raw), false);
+}
+
+async function processGuess(guess, timedOut) {
+  stopTimer();
+  const p = gamePhotos[currentIdx];
+  const trueMile = parseFloat(p.mile);
+  const score   = timedOut ? 0 : calcScore(guess, trueMile);
+  const perfect = !timedOut && isPerfect(guess, trueMile);
+  scores.push(score);
+  guesses.push(timedOut ? null : guess);
+  perfects.push(perfect);
+  await showResultScreen(p, guess, timedOut, score, perfect);
+}
+
+async function showResultScreen(p, guess, timedOut, score, perfect) {
+  if (window.resetResultZoom) window.resetResultZoom();
+  const trueMile = parseFloat(p.mile);
+  const runTotal = scores.reduce((a, b) => a + b, 0);
+  document.getElementById('r-photo').src          = p.url;
+  document.getElementById('r-mile').textContent    = `Mile ${p.mile}`;
+  document.getElementById('r-section').textContent = p.section;
+  document.getElementById('r-date').textContent    = p.date;
+  document.getElementById('r-dir').textContent     = p.direction;
+  const rCreditEl  = document.getElementById('r-photo-by');
+  const rCreditBar = document.getElementById('answer-credit-bar');
+  if (p.photo_by) {
+    rCreditEl.textContent    = '📷 ' + p.photo_by;
+    rCreditBar.style.display = '';
+  } else {
+    rCreditBar.style.display = 'none';
+  }
+  document.getElementById('r-true-mile').textContent  = fmt(trueMile);
+  document.getElementById('r-your-guess').textContent = timedOut ? '—' : fmt(guess);
+  const stVerdict = document.getElementById('st-verdict');
+  if (timedOut) {
+    stVerdict.textContent = 'Timed out';
+    stVerdict.className   = 'rsc-verdict timeout';
+  } else {
+    const v = getVerdictInfo(guess, trueMile);
+    stVerdict.textContent = v.text;
+    stVerdict.className   = 'rsc-verdict ' + v.cls;
+  }
+  const stRound = document.getElementById('st-round');
+  if (perfect) {
+    stRound.textContent = score.toFixed(1) + '  🎯';
+    stRound.className   = 'rsc-score-val perfect';
+  } else {
+    stRound.textContent = score.toFixed(1) + ' pts';
+    stRound.className   = 'rsc-score-val';
+  }
+  document.getElementById('st-total').textContent = runTotal.toFixed(1) + ' pts';
+  document.getElementById('st-total').className   = 'rsc-score-val';
+  const isLast = currentIdx === gamePhotos.length - 1;
+  document.getElementById('btn-next').textContent = isLast ? 'See Final Results →' : 'Next Photo →';
+
+  // Wait for result photo if not already decoded (same URL as guess screen — usually instant)
+  const resCached = _preloadCache[p.url];
+  if (!resCached || !resCached.img.complete || resCached.img.naturalWidth === 0) {
+    document.querySelector('.loading-text').textContent = 'Loading…';
+    showScreen('screen-loading');
+    await preloadImage(p.url);
+  }
+
+  document.getElementById('r-photo').src = p.url;
+  showScreen('screen-result');
+}
+
+function nextPhoto() {
+  currentIdx++;
+  currentIdx >= gamePhotos.length ? showEndScreen() : showGuessScreen();
+}
+
+function showEndScreen() {
+  const total = scores.reduce((a, b) => a + b, 0);
+  document.getElementById('final-score').textContent = total.toFixed(1);
+  const validGuesses = guesses.reduce((arr, g, i) => {
+    if (g !== null) arr.push({ guess: g, mile: parseFloat(gamePhotos[i].mile) });
+    return arr;
+  }, []);
+  if (validGuesses.length > 0) {
+    const avgMiles = validGuesses.reduce((sum, x) => sum + Math.abs(x.guess - x.mile), 0) / validGuesses.length;
+    document.getElementById('final-avg').textContent =
+      `On average, your guesses were ${avgMiles.toFixed(1)} miles off`;
+  } else {
+    document.getElementById('final-avg').textContent = '';
+  }
+
+  const tbody = document.getElementById('end-tbody');
+  tbody.innerHTML = '';
+  gamePhotos.forEach((p, i) => {
+    const guess    = guesses[i];
+    const score    = scores[i];
+    const trueMile = parseFloat(p.mile);
+    const tr       = document.createElement('tr');
+
+    const captionMeta = `Mile ${p.mile} · ${p.section} · ${p.direction} · ${p.date}`;
+    const caption = p.photo_by ? captionMeta + '|📷 ' + p.photo_by : captionMeta;
+    const tdThumb = document.createElement('td');
+    tdThumb.className = 'td-thumb';
+    tdThumb.innerHTML = `<img class="et-thumb" src="${p.url}" alt=""
+      onclick="openLightbox('${p.url}', '${caption.replace(/'/g, "&#39;")}')">`;
+
+
+    const tdGuess = document.createElement('td');
+    if (guess === null) {
+      tdGuess.className   = 'td-guess no-answer';
+      tdGuess.textContent = 'timed out';
+    } else {
+      tdGuess.className   = 'td-guess';
+      tdGuess.textContent = fmt(guess);
+    }
+
+    const tdMile = document.createElement('td');
+    tdMile.className   = 'td-mile';
+    tdMile.textContent = fmt(trueMile);
+
+    const isPerfectScore = perfects[i];
+    const tdScore = document.createElement('td');
+    tdScore.className   = 'td-score ' + (isPerfectScore ? 'perfect' : 'off');
+    tdScore.textContent = isPerfectScore ? score.toFixed(1) + ' 🎯' : score.toFixed(1);
+
+    tr.append(tdThumb, tdMile, tdGuess, tdScore);
+    tbody.appendChild(tr);
+  });
+
+  showScreen('screen-end');
+
+  // IMPORTANT: submitGameScore() must capture guessPayload BEFORE prepareNextGame()
+  // overwrites gamePhotos. submitGameScore builds the payload synchronously (before
+  // its first await), so calling it first is safe even though it's async.
+  submitGameScore();
+
+  // Preload next game's photos while user reads results
+  prepareNextGame();
+}
+
+async function submitGameScore() {
+  const loadEl    = document.getElementById('submit-loading');
+  const successEl = document.getElementById('submit-success');
+  const errorEl   = document.getElementById('submit-error');
+  loadEl.style.display    = 'flex';
+  successEl.style.display = 'none';
+  errorEl.style.display   = 'none';
+
+  if (currentUser.email === 'curtisesjunk@gmail.com') {
+    loadEl.innerHTML = '<span style="color:var(--muted);font-size:13px">Test account — score not recorded.</span>';
+    return;
+  }
+
+  const totalScore   = scores.reduce((a, b) => a + b, 0);
+  const perfectCount = perfects.filter(Boolean).length;
+  const guessPayload = gamePhotos.map((p, i) => ({
+    photo_id:     p.id,
+    true_mile:    parseFloat(p.mile),
+    guessed_mile: guesses[i],
+    score:        scores[i],
+    timed_out:    guesses[i] === null,
+  }));
+
+  const { error } = await sb.rpc('submit_game', {
+    p_user_id:       currentUser.id,
+    p_total_score:   totalScore,
+    p_perfect_count: perfectCount,
+    p_guesses:       guessPayload,
+  });
+
+  loadEl.style.display = 'none';
+
+  if (error) {
+    errorEl.textContent = error.message.includes('Rate limit')
+      ? 'Please wait a few minutes between scored games.'
+      : `Could not save score: ${error.message}`;
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  const ago90 = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+  const { count } = await sb
+    .from('game_sessions')
+    .select('*', { count: 'exact', head: true } )
+    .gt('total_score', totalScore)
+    .gte('played_at', ago90);
+  document.getElementById('rank-num').textContent = `#${(count ?? 0) + 1}`;
+  successEl.style.display = 'flex';
+}
+
+// ── Lightbox ──────────────────────────────────────────────
+function openLightbox(url, caption) {
+  document.getElementById('lb-img').src  = url;
+  const [meta, credit] = caption.split('|');
+  document.getElementById('lb-caption').innerHTML =
+    credit ? meta + '<br><span style="opacity:.7">' + credit + '</span>' : meta;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lb-img').src = '';
+}
+document.getElementById('lightbox').addEventListener('click', e => {
+  if (e.target === document.getElementById('lightbox')) closeLightbox();
+});
+
+// ── Event listeners ───────────────────────────────────────
+document.getElementById('mile-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitGuess();
+});
+
+const trailSlider = document.getElementById('trail-slider');
+trailSlider.addEventListener('input', () => {
+  const v = parseFloat(trailSlider.value);
+  document.getElementById('mile-input').value = v;
+  updateThumbColors(v);
+});
+document.getElementById('mile-input').addEventListener('input', () => {
+  const v = parseFloat(document.getElementById('mile-input').value);
+  if (!isNaN(v) && v >= 0 && v <= 2655) {
+    trailSlider.value = Math.round(v);
+    updateThumbColors(v);
+  }
+});
+
+// ── Pinch-to-zoom + pan ───────────────────────────────────
+function makePinchZoom(frameEl, photoEl, resetName) {
+  let scale = 1, panX = 0, panY = 0;
+  let startDist = 0, startScale = 1, startRect = null;
+  let lastX = 0, lastY = 0;
+
+  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+  function applyTransform() {
+    const maxPanX = clamp((scale - 1) * frameEl.clientWidth  / 2, 0, Infinity);
+    const maxPanY = clamp((scale - 1) * frameEl.clientHeight / 2, 0, Infinity);
+    panX = clamp(panX, -maxPanX, maxPanX);
+    panY = clamp(panY, -maxPanY, maxPanY);
+    photoEl.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+  }
+
+  function touchDist(t) {
+    return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  }
+
+  window[resetName] = function() {
+    scale = 1; panX = 0; panY = 0;
+    photoEl.style.transform = '';
+  };
+
+  frameEl.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) {
+      startDist  = touchDist(e.touches);
+      startScale = scale;
+      startRect  = frameEl.getBoundingClientRect();
+      e.preventDefault();
+    } else if (e.touches.length === 1 && scale > 1) {
+      lastX = e.touches[0].clientX;
+      lastY = e.touches[0].clientY;
+    }
+  }, { passive: false });
+
+  frameEl.addEventListener('touchmove', e => {
+    if (e.touches.length === 2) {
+      const newScale = clamp(startScale * touchDist(e.touches) / startDist, 1, 6);
+      const focalX = (e.touches[0].clientX + e.touches[1].clientX) / 2
+                   - (startRect.left + startRect.width  / 2);
+      const focalY = (e.touches[0].clientY + e.touches[1].clientY) / 2
+                   - (startRect.top  + startRect.height / 2);
+      const ratio = newScale / scale;
+      panX  = focalX + (panX - focalX) * ratio;
+      panY  = focalY + (panY - focalY) * ratio;
+      scale = newScale;
+      applyTransform();
+      e.preventDefault();
+    } else if (e.touches.length === 1 && scale > 1) {
+      panX += e.touches[0].clientX - lastX;
+      panY += e.touches[0].clientY - lastY;
+      lastX  = e.touches[0].clientX;
+      lastY  = e.touches[0].clientY;
+      applyTransform();
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  frameEl.addEventListener('touchend', e => {
+    if (e.touches.length === 0 && scale <= 1.05) window[resetName]();
+  });
+}
+
+makePinchZoom(
+  document.querySelector('#screen-guess .photo-frame'),
+  document.getElementById('g-photo'),
+  'resetPhotoZoom'
+);
+makePinchZoom(
+  document.querySelector('#screen-result .result-photo-wrap'),
+  document.getElementById('r-photo'),
+  'resetResultZoom'
+);
+
+document.addEventListener('touchmove', e => {
+  if (e.touches.length > 1) {
+    const guessFrame  = document.querySelector('#screen-guess .photo-frame');
+    const resultFrame = document.querySelector('#screen-result .result-photo-wrap');
+    if (!guessFrame.contains(e.target) && !resultFrame.contains(e.target)) {
+      e.preventDefault();
+    }
+  }
+}, { passive: false });
+
+// ── Back-navigation guard ─────────────────────────────────
+// When the user hits the browser back button mid-game, the page is frozen
+// in bfcache. On returning (forward button or history.back), pageshow fires
+// with e.persisted = true. We detect this, reset all game state, return to
+// the start screen, and show a modal. history.replaceState() flushes the
+// bfcache entry so any subsequent forward navigation does a clean reload
+// (not another bfcache restore that would re-enter the game).
+
+function _gameIsActive() {
+  return document.getElementById('screen-guess').classList.contains('active')
+      || document.getElementById('screen-result').classList.contains('active');
+}
+
+window.addEventListener('pageshow', function(e) {
+  if (!e.persisted || !_gameIsActive()) return;
+
+  // Stop any running timer immediately
+  stopTimer();
+
+  // Wipe game state — scores/guesses/perfects are now stale
+  currentIdx = 0; scores = []; guesses = []; perfects = [];
+
+  // Pre-select a fresh set of photos in the background
+  prepareNextGame();
+
+  // Return to the start screen (practice or scored — both have screen-start)
+  showScreen('screen-start');
+
+  // Show the interruption modal
+  document.getElementById('nav-interrupt-modal').style.display = 'flex';
+
+  // Flush the bfcache entry for this page. Without this, clicking forward
+  // after dismissing the modal would restore the page to the mid-game state.
+  history.replaceState(null, '', window.location.href);
+});
+
+document.getElementById('nav-interrupt-ok').addEventListener('click', function() {
+  document.getElementById('nav-interrupt-modal').style.display = 'none';
+});
+
+// ── Kick off ──────────────────────────────────────────────
+// Auth handled by onAuthStateChange above — INITIAL_SESSION fires on load.
+
+</script>
+</body>
+</html>

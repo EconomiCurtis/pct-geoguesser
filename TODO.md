@@ -13,49 +13,54 @@ Hosted on Cloudflare Pages. Backend: Supabase (PostgreSQL + Google OAuth).
 
 ---
 
-## Up Next
-
+## Up Next / Ideas / future work
+- About page (`/about/`) — landing page "About PCT GeoGuesser" link points here
+- Photo stats recalculation tool in admin (after bulk deletes)
+- More photos / photo reassignment before launch
+- Social links on hiker profile page (requires new `social_links` columns in profiles)
 
 
 ---
 
-## Recently Completed — Launch + Post-Launch Fixes (2026-05-29)
+## Sorted
 
-### ✅ Photos update
+### Recently Completed — Launch + Post-Launch Fixes (2026-05-29)
+
+#### ✅ Photos update
 - [X] Add more photos for Washington and Oregon
 - [X] Reduce v1-demo photo pool to ~40 (edit photos.csv: change ~62 rows from `v1-demo` → `v2-scored`)
 - [X] Tag green-tunnel photos in photos.csv (dense forest, no visible landmarks), limit number of these in each game to <=2. 
 
 
-### ✅ Deployed to production
+#### ✅ Deployed to production
 - [x] Wiped Supabase game_sessions (old scores used miles-off system, incompatible with new pts)
 - [x] Deployed via `npx wrangler pages deploy deploy/ --project-name=pct-geoguesser`
 - [x] Smoke-tested live site — practice game, scored game, leaderboard, hiker page all working
 
-### ✅ DB schema fix — float scores
+#### ✅ DB schema fix — float scores
 Old `submit_game()` RPC had `p_total_score INTEGER` and `score::INTEGER` cast, causing
 `invalid input syntax for type integer` error when saving exponential-decay scores (floats).
 Fixed by altering `game_sessions.total_score` and `game_guesses.score` to `NUMERIC`,
 updating `submit_game()` parameter and cast, and dropping the stale INTEGER overload.
 
-### ✅ Lightbox caption — photo_by on its own line
+#### ✅ Lightbox caption — photo_by on its own line
 In both `/game` result screen and `/admin` photo stats lightbox, the `photo_by` credit
 now appears on a second line below the mile/section/direction/date meta.
 
-### ✅ Admin duplicate player fix
+#### ✅ Admin duplicate player fix
 "First Light" had two `profiles` rows (old auth UUID orphaned after re-login).
 Deleted stale row; confirmed no other duplicates.
 
-### ✅ File structure reorganisation
+#### ✅ File structure reorganisation
 Raw photos moved from external drive to `img/raw-photos-save/Summer 2025/` inside the repo.
 Updated `misc/copy_rename_photos.py`, `misc/generate_photo_csv.py`, and
 `app-explore/build_webapp.py` to use relative paths — no more hardcoded external drive paths.
 
 ---
 
-## Recently Completed — Scoring Overhaul + UI Polish
+### Recently Completed — Scoring Overhaul + UI Polish
 
-### ✅ New Scoring System (highest score wins)
+#### ✅ New Scoring System (highest score wins)
 
 **Formula:**
 ```
@@ -66,7 +71,7 @@ S_photo = (2655.8 / N) × e^(−10 × d_eff / 2655.8)
 - **Grace zone**: `d_eff = max(0, |guess − actual| − 3)` — within ±3 miles = full credit
 - **Timeout** = 0 pts for that round
 
-### ✅ Code Changes Completed
+#### ✅ Code Changes Completed
 
 - [x] `app-game-v2-scored/build.py` — exponential scoring, photo_by chips, end-table credit, UI fixes
 - [x] `app-game-v1-practice/build.py` — same scoring + UI changes as game-v2
@@ -77,7 +82,7 @@ S_photo = (2655.8 / N) × e^(−10 × d_eff / 2655.8)
 - [x] Renamed `app-game-v2` → `app-game-v2-scored`
 - [x] Updated `build.sh`, `.gitignore`, `README.md`, and sub-READMEs
 
-### ✅ `photo_by` Credit Field
+#### ✅ `photo_by` Credit Field
 
 - [x] Shown in active round hints area (alongside season/direction chips)
 - [x] Shown on result screen — own line below the meta chips row
@@ -85,13 +90,13 @@ S_photo = (2655.8 / N) × e^(−10 × d_eff / 2655.8)
 - [x] Lightbox caption includes date + photo_by
 - [x] Admin Photo Stats table: Date + Photo By columns added
 
-### ✅ Hiker Profile Hero Card
+#### ✅ Hiker Profile Hero Card
 
 - [x] Big best score, callout text (random, tier-based), ranking badges
 - [x] Support stats (games played, avg score, total perfects) below
 - [x] 7 callout options for top tier, multiple options per tier
 
-### 🗄️ Database Reset ✅ Done 2026-05-29
+#### 🗄️ Database Reset ✅ Done 2026-05-29
 
 Old scores (miles-off totals, lower=better) were incompatible with new scores (pts, higher=better).
 `profiles` table was unaffected. `game_sessions`, `game_guesses`, and `photo_stats` wiped.
@@ -99,15 +104,7 @@ Schema updated: `total_score` and `score` columns changed from `INTEGER` → `NU
 
 ---
 
-## Ideas / future work
-- About page (`/about/`) — landing page "About PCT GeoGuesser" link points here
-- Photo stats recalculation tool in admin (after bulk deletes)
-- More photos / photo reassignment before launch
-- Social links on hiker profile page (requires new `social_links` columns in profiles)
-
----
-
-## Sorted
+### First Init and testing version. 
 
 - [x] Init basic photo-explorer app
 - [x] Photo anonymisation — random IDs, CSV with mile/direction/section metadata

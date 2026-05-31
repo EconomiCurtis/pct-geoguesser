@@ -28,6 +28,7 @@ leaderboard, and make it feel polished on mobile.
 - Built a photo-selection engine that draws balanced samples across PCT sections, enforces spacing between photos, and caps too-easy, repetitive, or too-difficult shots
 - Practice mode (no login) and scored mode (Google OAuth login, global leaderboard)
 - GeoGuessr-style exponential decay scoring — highest score wins, with a grace zone for near-perfect guesses
+- After each guess, the result screen reveals the photo's location with a deep link to the PCTA interactive map.
 - Hiker profile pages, a global leaderboard, and an admin dashboard (photo stats, player management, site settings)
 - Anti-cheat: back-navigation during a live game resets state and shows an interruption modal
 - All static files on Cloudflare Pages; Supabase handles auth, scores, and server-side RPCs with row-level security
@@ -49,12 +50,13 @@ See [TODO.md](TODO.md) for the full build history.
 │   └── misc/                        ← logo and preview images (source files)
 │
 ├── misc/
-│   ├── photos.csv                   ← master table: one row per photo
+│   ├── photos.csv                   ← master table: one row per photo (incl. lat/lon/map)
 │   ├── supabase_config.py           ← publishable Supabase URL + anon key
 │   ├── supabase_schema.sql          ← full schema: tables, RLS, triggers, RPCs
 │   ├── supabase_admin_rpcs.sql      ← admin-only RPCs (run once in Supabase SQL editor)
 │   ├── generate_photo_csv.py        ← builds photos.csv from raw filenames
-│   └── copy_rename_photos.py        ← copies + renames photos into img/miles/
+│   ├── add_geo_columns.py           ← fills lat/lon/map from the GPS spreadsheet
+│   └── copy_rename_photos.py        ← copies + renames photos into deploy/miles/
 │
 ├── app-landing/                     ← landing page at /
 │   ├── build.py
@@ -98,13 +100,16 @@ See [TODO.md](TODO.md) for the full build history.
 ## Pages
 
 ### `/` — Landing page
-Entry point. Links to both game modes and the leaderboard.
-Tagline, logo, and "About PCT GeoGuesser" footer link (page TBD).
+Entry point. Logo, tagline, a how-to-play card, and buttons for both game modes.
+A footer links to the leaderboard and an About link (currently points back to `/`).
 
 ### `/practice/` — Practice game (v1)
 No login required. 10 photos per game — Mile 1 is always first (easy opener),
 remaining 9 drawn randomly across all 5 PCT sections. Each photo is timed.
 Slider to guess, score shown per round and in a final summary table. No data saved.
+After each guess, the result screen reveals the correct mile alongside a `map ↗`
+link that opens that spot on the PCTA interactive map. The same link sits in the
+lightbox when you tap a photo thumbnail in the end-of-game recap.
 
 ### `/game/` — Scored game (v2)
 Google login required. Same gameplay as practice. Scores are saved to Supabase
@@ -123,7 +128,7 @@ game gets a ⭐ badge; if it's within 90 days, a 📊 ranked badge too.
 
 ### `/admin/` — Admin dashboard
 Only accessible to a select Admin (enforced by Supabase SECURITY DEFINER
-RPCs — not just client-side). Three tabs:
+RPCs — not just client-side). Four tabs:
 
 - **Recent Games** — last 100 scored games, with player links and timestamps
 - **Photo Stats** — per-photo stats: appearances, average guessing error, SD
@@ -170,12 +175,20 @@ The scoring system was redesigned after playtesting. The original method added u
 ```
 1. Drop photos into img/raw-photos-save/Summer 2025/
            ↓
-2. python3 misc/generate_photo_csv.py     →  misc/photos.csv  (preserves existing IDs)
+2. python3 misc/generate_photo_csv.py     →  misc/photos.csv  (adds rows; geo left blank)
            ↓
-3. python3 misc/copy_rename_photos.py     →  deploy/miles/{id}.jpeg  (skips already-done)
+3. python3 misc/add_geo_columns.py        →  fills lat/lon/map for the new rows
+           ↓
+4. python3 misc/copy_rename_photos.py     →  deploy/miles/{id}.jpeg  (skips already-done)
 ```
 
 Or manually: assign an ID, add a row to photos.csv, copy the file to `deploy/miles/`.
+
+The `lat`, `lon`, and `map` columns are derived, not hand-entered. `add_geo_columns.py`
+reads a GPS waypoint spreadsheet (`misc/`, gitignored), interpolates an
+approximate latitude/longitude for each photo's trail mile, and builds a PCTA
+interactive-map deep link centered on that point. It only fills blank rows by
+default, so any value you hand-tune survives; pass `--force` to recompute all.
 
 ### Rebuilding and deploying
 
@@ -204,3 +217,4 @@ the Python scripts that generate each `index.html`.
 | **Vanilla JS** | All game logic, UI, and Supabase client calls. No framework. The Supabase JS client (`@supabase/supabase-js` via CDN) handles auth and database queries. |
 | **CSS custom properties** | Theming (dark UI, PCT section colours, teal accent). The trail slider thumb uses a tri-colour gradient computed from the guess position — rendered entirely in CSS via `--thumb-left`, `--thumb-center`, `--thumb-right` variables set by JS. |
 | **Wrangler CLI** | Cloudflare's CLI tool. Used only for `pages deploy` — no Workers, no edge functions. |
+| **AI pair-programming (Claude and Gemini)** | A lot of this was built conversationally. Claude and Gemini helped write and refactor the build scripts, the scoring formula, the photo-selection logic, and the Supabase schema and RPCs, plus plenty of debugging and this README. A human still chose the photos, made the calls, and owns the bugs. |

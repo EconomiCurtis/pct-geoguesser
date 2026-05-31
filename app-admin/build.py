@@ -6,10 +6,12 @@
 # anon key; the email check is client-side (fine because all read data is
 # already public via RLS; this just controls UI access).
 #
-# Three tab views:
-#   • Recent Games   — last 100 scored games with player names + scores
-#   • Photo Stats    — all 202 photos merged with Supabase stats, sortable
-#   • Edit Database  — search players, delete games or full player records
+# Four tab views:
+#   - Recent Games   : last 100 scored games with player names + scores
+#   - Photo Stats    : every photo merged with Supabase stats, sortable; each
+#                      thumbnail opens a lightbox with a "map" deep link
+#   - Edit Database  : search players, delete games or full player records
+#   - Site Settings  : admin toggles (e.g. show/hide the 90-day leaderboard tab)
 #
 # Delete actions require two SECURITY DEFINER RPCs in Supabase:
 #   admin_delete_player_games(target_user_id UUID)
@@ -48,6 +50,7 @@ all_photos_json = json.dumps(
             "section":   r["section"],
             "date":      r.get("date", "") or "",
             "photo_by":  r.get("photo_by", "") or "",
+            "map":       r.get("map", "") or "",
             "version":   r["version"],
             "url":       r["url"],
         }
@@ -644,7 +647,7 @@ function renderStats() {{
     const lbCaption = p.photo_by ? lbMeta + '|📷 ' + p.photo_by : lbMeta;
     tr.innerHTML = `
       <td class="td-thumb"><img src="${{p.url}}" alt="Mile ${{p.mile}}"
-           onclick="openLb('${{p.url}}', '${{lbCaption.replace(/'/g,'&#39;')}}')" loading="lazy"></td>
+           onclick="openLb('${{p.url}}', '${{lbCaption.replace(/'/g,'&#39;')}}', '${{(p.map||'').replace(/'/g,'&#39;')}}')" loading="lazy"></td>
       <td style="font-weight:700;font-variant-numeric:tabular-nums">${{p.mile}}</td>
       <td style="color:var(--muted);font-size:12px">${{p.section}}</td>
       <td style="color:var(--muted)">${{p.direction}}</td>
@@ -896,11 +899,16 @@ function cancelEditName(userId, originalName) {{
 }}
 
 // ── Lightbox ──────────────────────────────────────────────
-function openLb(url, cap) {{
+function openLb(url, cap, mapUrl) {{
   document.getElementById('lb-img').src = url;
   const [meta, credit] = cap.split('|');
-  document.getElementById('lb-cap').innerHTML =
-    credit ? meta + '<br><span style="opacity:.7">' + credit + '</span>' : meta;
+  const mapHtml = mapUrl
+    ? ` <a href="${{mapUrl}}" target="_blank" rel="noopener" style="color:var(--teal);text-decoration:none;font-style:normal">map ↗</a>`
+    : '';
+  const creditHtml = credit
+    ? '<br><span style="opacity:.7">' + credit + (mapUrl ? ' · ' + mapHtml.trim() : '') + '</span>'
+    : (mapUrl ? '<br>' + mapHtml.trim() : '');
+  document.getElementById('lb-cap').innerHTML = meta + creditHtml;
   document.getElementById('lb').style.display = 'flex';
 }}
 </script>

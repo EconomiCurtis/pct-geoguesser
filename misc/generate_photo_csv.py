@@ -1,3 +1,36 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# generate_photo_csv.py  --  PCT GeoGuesser
+#
+# Scans the raw photo folder and (re)builds misc/photos.csv, the master table
+# with one row per photo. Each raw filename encodes the trail mile (and sometimes
+# "sobo"); this script parses that out and assigns the rest of the metadata.
+#
+# Per photo it produces:
+#   id        : random 5-letter handle, also the deployed filename (hides the answer)
+#   mile      : NoBo trail mile, parsed from "Mile <n>" in the filename
+#   direction : NoBo, or SoBo if "sobo" appears in the filename
+#   section   : named PCT section, derived from the mile (see get_section)
+#   date      : the SEASON constant below
+#   filename  : original raw filename (kept so re-runs can match existing rows)
+#   url       : public image URL, {IMAGE_BASE_URL}/{id}{ext}
+#   version   : v1-demo or v2-scored (new rows default to v2-scored)
+#   photo_by  : photographer credit (blank; set by hand in the CSV)
+#   tags      : e.g. "green-tunnel" (blank; set by hand in the CSV)
+#   lat/lon/map : geographic columns, left BLANK here and filled separately
+#                 by add_geo_columns.py (which needs the GPS spreadsheet).
+#
+# Safe to re-run: existing rows are preserved exactly (IDs, manual edits, geo
+# values all survive). Only raw files not already in the CSV get new rows. The
+# url column is always recomputed so an IMAGE_BASE_URL change propagates.
+#
+# Two-step flow when adding photos:
+#   1. python3 misc/generate_photo_csv.py   (this script: adds rows, blank geo)
+#   2. python3 misc/add_geo_columns.py      (fills lat/lon/map for the new rows)
+#
+# Run:
+#   python3 misc/generate_photo_csv.py
+# ──────────────────────────────────────────────────────────────────────────────
+
 import os
 import re
 import csv
@@ -8,7 +41,10 @@ PHOTO_DIR      = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", 
 OUTPUT_CSV     = os.path.join(os.path.dirname(os.path.abspath(__file__)), "photos.csv")
 SEASON         = "Summer 2025"  # written as the "date" column; matches the source folder name
 IMAGE_BASE_URL = "https://pct-geoguesser.pages.dev/miles"  # update here if hosting changes
-FIELDNAMES     = ["id", "mile", "direction", "section", "date", "filename", "url", "version", "photo_by", "tags"]
+# lat/lon/map are populated by add_geo_columns.py, not here. They are included in
+# FIELDNAMES so existing geo values are preserved on re-run (and so DictWriter does
+# not choke on the extra keys); new rows below leave them blank.
+FIELDNAMES     = ["id", "mile", "direction", "section", "date", "filename", "url", "version", "photo_by", "tags", "lat", "lon", "map"]
 
 def make_url(row_id, filename):
     ext = os.path.splitext(filename)[1].lower()  # .jpeg or .jpg
@@ -89,7 +125,10 @@ for fname in all_files:
         "url":       make_url(uid, fname),
         "version":   "",   # default assigned below; manual edits in CSV are always preserved
         "photo_by":  "",   # set manually after adding to CSV if needed
-        "tags":      "",   # e.g. "green-tunnel" — set manually in CSV
+        "tags":      "",   # e.g. "green-tunnel" -- set manually in CSV
+        "lat":       "",   # filled by add_geo_columns.py
+        "lon":       "",   # filled by add_geo_columns.py
+        "map":       "",   # filled by add_geo_columns.py
     })
 
 # ── Combine and sort by mile ───────────────────────────────────────

@@ -172,6 +172,7 @@ def _photo_json(photo_rows):
         'url':       r['url'],
         'photo_by':  r.get('photo_by', '') or '',
         'tags':      r.get('tags', '') or '',
+        'map':       r.get('map', '') or '',
     } for r in photo_rows])
 
 # ── Trail slider: section colours + generated HTML ──────────────────────────
@@ -1145,6 +1146,8 @@ h1 span {{ color: var(--pct-teal); }}
 }}
 .a-chip.mile   {{ color: var(--pct-teal); border-color: var(--pct-teal); background: rgba(0,128,128,.12); font-size: 13px; font-weight: 700; }}
 .a-chip.credit {{ color: var(--muted); font-style: italic; }}
+.a-chip.map-link {{ color: var(--pct-teal); text-decoration: none; }}
+.a-chip.map-link:hover {{ color: #5fd4d4; }}
 .result-actions {{ flex-shrink: 0; padding: 12px 14px; background: var(--surface); border-top: 1px solid var(--border); }}
 
 /* ══════════════════════════════════════════════════════════
@@ -1296,8 +1299,9 @@ h1 span {{ color: var(--pct-teal); }}
     <span class="a-chip" id="r-date"></span>
     <span class="a-chip" id="r-dir"></span>
   </div>
-  <div class="answer-credit-bar" id="answer-credit-bar" style="display:none">
+  <div class="answer-credit-bar" id="answer-credit-bar">
     <span class="a-chip credit" id="r-photo-by"></span>
+    <a class="a-chip map-link" id="r-map-link" href="" target="_blank" rel="noopener" style="display:none">map ↗</a>
   </div>
   <div class="result-actions">
     <button class="btn-outline" id="btn-next" onclick="nextPhoto()">Next Photo →</button>
@@ -1544,12 +1548,18 @@ async function showResultScreen(p, guess, timedOut, score, perfect) {{
   document.getElementById('r-date').textContent    = p.date;
   document.getElementById('r-dir').textContent     = p.direction;
   const rCreditEl  = document.getElementById('r-photo-by');
-  const rCreditBar = document.getElementById('answer-credit-bar');
+  const rMapEl     = document.getElementById('r-map-link');
   if (p.photo_by) {{
-    rCreditEl.textContent    = '📷 ' + p.photo_by;
-    rCreditBar.style.display = '';
+    rCreditEl.textContent   = '📷 ' + p.photo_by;
+    rCreditEl.style.display = '';
   }} else {{
-    rCreditBar.style.display = 'none';
+    rCreditEl.style.display = 'none';
+  }}
+  if (p.map) {{
+    rMapEl.href             = p.map;
+    rMapEl.style.display    = '';
+  }} else {{
+    rMapEl.style.display    = 'none';
   }}
   document.getElementById('r-true-mile').textContent  = fmt(trueMile);
   document.getElementById('r-your-guess').textContent = timedOut ? '—' : fmt(guess);
@@ -1620,7 +1630,7 @@ function showEndScreen() {{
     const tdThumb = document.createElement('td');
     tdThumb.className = 'td-thumb';
     tdThumb.innerHTML = `<img class="et-thumb" src="${{p.url}}" alt=""
-      onclick="openLightbox('${{p.url}}', '${{caption.replace(/'/g, "&#39;")}}')">`;
+      onclick="openLightbox('${{p.url}}', '${{caption.replace(/'/g, "&#39;")}}', '${{(p.map||'').replace(/'/g, "&#39;")}}')">`;
 
 
     const tdGuess = document.createElement('td');
@@ -1652,11 +1662,16 @@ function showEndScreen() {{
 }}
 {js_submit}
 // ── Lightbox ──────────────────────────────────────────────
-function openLightbox(url, caption) {{
+function openLightbox(url, caption, mapUrl) {{
   document.getElementById('lb-img').src  = url;
   const [meta, credit] = caption.split('|');
-  document.getElementById('lb-caption').innerHTML =
-    credit ? meta + '<br><span style="opacity:.7">' + credit + '</span>' : meta;
+  const mapHtml = mapUrl
+    ? ` <a href="${{mapUrl}}" target="_blank" rel="noopener" style="color:var(--pct-teal);text-decoration:none;font-style:normal">map ↗</a>`
+    : '';
+  const creditHtml = credit
+    ? '<br><span style="opacity:.7">' + credit + (mapUrl ? ' · ' + mapHtml.trim() : '') + '</span>'
+    : (mapUrl ? '<br>' + mapHtml.trim() : '');
+  document.getElementById('lb-caption').innerHTML = meta + creditHtml;
   document.getElementById('lightbox').classList.add('open');
 }}
 function closeLightbox() {{

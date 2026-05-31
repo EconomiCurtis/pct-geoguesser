@@ -25,6 +25,13 @@ misc/photos.csv
 # conventional to gitignore. Copy misc/supabase_config.template.py to get started.
 misc/supabase_config.py
 
+# ── Third-party source data (consumed by misc/ prep scripts) ──────────────────
+# Halfmile PCT GPS waypoints. add_geo_columns.py reads this to fill photos.csv
+# lat/lon/map. Not ours to redistribute, so kept local like the raw photos.
+misc/halfmiles_pct_notes_gps and miles.xlsx
+# Excel lock/temp files (e.g. ~$workbook.xlsx) created while a sheet is open
+**/~$*
+
 # ── Local-only tools ──────────────────────────────────────────────────────────
 app-explore/
 

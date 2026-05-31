@@ -258,7 +258,7 @@ body {{
       <tr>
         <th style="text-align:center">#</th>
         <th>Trail Name</th>
-        <th>Best Score (pts)</th>
+        <th>Best Score</th>
         <th>Perfects</th>
       </tr>
     </thead>

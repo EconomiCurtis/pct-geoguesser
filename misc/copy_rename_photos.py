@@ -1,3 +1,24 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# copy_rename_photos.py  --  PCT GeoGuesser
+#
+# Copies each raw photo into deploy/miles/ under its anonymized name. The raw
+# files have descriptive names that leak the answer (they contain the mile);
+# the deployed copy is renamed to just {id}{ext} so the URL gives nothing away.
+#
+# Reads misc/photos.csv for the filename -> id mapping. For every row:
+#   img/raw-photos-save/Summer 2025/<filename>  ->  deploy/miles/<id><ext>
+#
+# Safe to re-run: files already present in deploy/miles/ are skipped, originals
+# are never modified (copy2 preserves timestamps). Rows whose source file is
+# missing are reported at the end rather than aborting the run.
+#
+# Note: both img/ (source) and deploy/miles/ (637 MB of photos) are gitignored,
+# so this only does useful work on a machine that has the raw photos locally.
+#
+# Run:
+#   python3 misc/copy_rename_photos.py
+# ──────────────────────────────────────────────────────────────────────────────
+
 import os
 import csv
 import shutil

@@ -21,6 +21,29 @@ Hosted on Cloudflare Pages. Backend: Supabase (PostgreSQL + Google OAuth).
 
 ## Sorted
 
+### ✅ Photo Locations + Map Links + Docs (2026-05-31)
+
+- **Photo GPS columns:** Added `lat`, `lon`, and `map` to photos.csv. Lat/lon are interpolated for each photo's trail mile against a ~2,900-point GPS waypoint spreadsheet; `map` is a PCTA interactive-map deep link centered on that point (zoom level 14).
+- **`add_geo_columns.py` (new):** Reusable, documented script that fills the geo columns. Fills only blank rows by default (preserves hand-tuned values); `--force` recomputes all. Rounds lat/lon consistently to 6 dp in every branch.
+- **`generate_photo_csv.py` fix:** Added `lat`/`lon`/`map` to FIELDNAMES so re-running preserves geo values instead of crashing on the extra keys. New rows leave geo blank for `add_geo_columns.py` to fill. Added a full header docblock.
+- **Map links in review screens:** The post-guess result screen and the end-game recap lightbox now show a `map ↗` link (both game modes). Admin Photo Stats lightbox got the same link. A `·` separates the photo credit from the map link when both are present. The during-guess screen is untouched (no location hints while guessing).
+- **rzzub correction:** Filename + mile fixed (2599.8 -> 2499.8) and re-sorted into mile order in photos.csv.
+- **Leaderboard label:** "Best Score (pts)" column header shortened to "Best Score" (scores already carry "pts").
+- **Documentation pass:** File-header docblocks added to `copy_rename_photos.py`, `add_geo_columns.py`, and local-only `app-explore/build_webapp.py`. Corrected the stale `app-admin` header (four tabs incl. Site Settings; photo count no longer hardcoded). README updated with the geo workflow step, the new script, the gameplay map-link note, and a fixed `/` footer description.
+
+---
+
+### ✅ Canonical Domain + Social Cards + Schema Sync (2026-05-31)
+
+- **Custom domain:** Moved everything to `pct-geoguesser.economicurtis.com` (GoDaddy CNAME -> Cloudflare Pages custom domain). Updated `MISC_BASE_URL`, every `og:url`, and the OAuth `redirectTo`; updated Supabase Auth Site URL + redirect allowlist so post-login lands on the canonical domain.
+- **Social preview cards:** Full Open Graph + Twitter card blocks added to every page (landing, game, practice, leaderboard, hiker), pointing at the canonical preview image.
+- **Timer:** Bumped 45s -> 60s across both game modes and the landing page. README language kept duration-agnostic so it does not need re-editing on future tweaks.
+- **Landing footer:** New "Leaderboard · About" footer links.
+- **Schema docs synced to production:** `supabase_schema.sql` updated (NUMERIC scores, score cap -> 2680, session-cap comment -> 15, `site_settings` table + RLS). `supabase_admin_rpcs.sql` documents the `admin_set_setting()` RPC. Documentation only; the live DB was already correct.
+- **Repo hygiene:** `.gitignore` now ignores only `deploy/miles/` (637 MB) rather than all of `deploy/`, so generated HTML is version-controlled. `build.sh` header corrected to reflect the manual wrangler deploy (not git-triggered). Deleted the stale `deploy/leaderboard/all-time/` page.
+
+---
+
 ### ✅ Polish + Anti-Cheat (2026-05-30)
 
 - **Back-nav anti-cheat guard:** `pageshow` listener detects bfcache restores (`e.persisted = true`) during an active game. Stops timer, wipes state, returns to start screen, shows "Game Interrupted" modal. `history.replaceState()` flushes bfcache so forward navigation does a clean reload. Applies to both modes.

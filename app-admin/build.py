@@ -402,6 +402,19 @@ td.val-muted {{ color: var(--muted); }}
           </label>
         </div>
       </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px 24px;display:flex;flex-direction:column;gap:12px">
+        <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--teal)">Typography</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:16px">
+          <div>
+            <div style="font-size:15px;font-weight:600">Primary Font</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:3px">Futura is the default (macOS/iOS). Open Sans is a web font that looks consistent across all devices.</div>
+          </div>
+          <select id="select-font" onchange="saveSetting('primary_font', this.value)" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:13px;cursor:pointer;font-family:inherit">
+            <option value="futura">Futura</option>
+            <option value="open-sans">Open Sans</option>
+          </select>
+        </div>
+      </div>
       <p id="settings-status" style="font-size:13px;color:var(--muted);text-align:center;min-height:18px"></p>
     </div>
   </section>
@@ -492,6 +505,11 @@ async function loadSettings() {{
     for (const row of data) {{
       if (row.key === 'show_rolling_leaderboard') {{
         document.getElementById('toggle-rolling').checked = row.value === 'true';
+      }}
+      // primary_font: 'futura' | 'open-sans' — drives font on all public pages
+      if (row.key === 'primary_font') {{
+        const sel = document.getElementById('select-font');
+        if (sel) sel.value = row.value;
       }}
     }}
   }} catch (_) {{}}

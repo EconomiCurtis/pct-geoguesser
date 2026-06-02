@@ -41,10 +41,13 @@
   --sobo-col:  #c8a96e;
   --north-col: #6fd4a0;
   --south-col: #c8a96e;
+  /* ── Font preference (overridden at runtime if site_settings primary_font
+        is set to 'open-sans'). Default: Futura stack. ── */
+  --font-primary: 'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif;
 }
 
 body {
-  font-family: 'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif;
+  font-family: var(--font-primary);
   background: var(--bg);
   color: var(--text);
   height: 100dvh;
@@ -109,8 +112,8 @@ h1 span { color: var(--pct-teal); }
   background: var(--pct-green); color: var(--pct-white);
   border: none; border-radius: 10px;
   padding: 13px 36px; font-size: 16px; font-weight: 700;
+  font-family: inherit; letter-spacing: .01em; white-space: nowrap;
   cursor: pointer; transition: filter .15s, transform .1s;
-  letter-spacing: .01em; white-space: nowrap;
 }
 .btn-green:hover { filter: brightness(1.25); transform: translateY(-1px); }
 .btn-green:active { transform: translateY(0); }
@@ -118,7 +121,8 @@ h1 span { color: var(--pct-teal); }
 .btn-outline {
   background: transparent; color: var(--text);
   border: 1px solid var(--border); border-radius: 10px;
-  padding: 13px; font-size: 15px; font-weight: 600;
+  padding: 13px; font-size: 16px; font-weight: 700;
+  font-family: inherit; letter-spacing: .01em;
   cursor: pointer; width: 100%; transition: background .15s, border-color .15s;
   text-decoration: none; display: block; text-align: center;
 }
@@ -416,6 +420,7 @@ textarea.form-input { resize: vertical; min-height: 80px; font-size: 14px; line-
 .rank-lb-link:hover { color: #5fd4d4; }
 .submit-error { display: none; font-size: 13px; color: #dc2626; }
 
+
 .end-table-wrap { width: 100%; max-width: 580px; overflow-x: auto; }
 .end-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .end-table th { padding: 6px 10px; font-size: 10px; text-transform: uppercase; letter-spacing: .09em; border-bottom: 1px solid var(--border); white-space: nowrap; font-weight: 700; }
@@ -463,10 +468,38 @@ textarea.form-input { resize: vertical; min-height: 80px; font-size: 14px; line-
   .rules-card { max-width: 580px; padding: 22px 26px; }
   .rules-card h3 { font-size: 12px; margin-bottom: 14px; }
   .rules-card li { font-size: 16px; }
-  .btn-green { font-size: 18px; padding: 15px 44px; }
+  .btn-green  { font-size: 18px; padding: 15px 44px; }
+  .btn-outline { font-size: 18px; }
   .signup-card { max-width: 480px; }
 }
 </style>
+<script>
+/* ── Font preference ────────────────────────────────────────────────────────
+   Applies the site's primary_font setting from Supabase site_settings.
+   localStorage key 'pct_font' is read synchronously so the correct font
+   is set before first paint (no flash). A background fetch then updates
+   the cache if the setting has changed in the admin panel.
+   Values: 'futura' (default) | 'open-sans'  ── */
+(function() {
+  var STACKS = {
+    'futura':    "'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif",
+    'open-sans': "'Open Sans', Arial, sans-serif"
+  };
+  var cached = localStorage.getItem('pct_font');
+  if (cached && STACKS[cached]) {
+    document.documentElement.style.setProperty('--font-primary', STACKS[cached]);
+  }
+  fetch('https://alrjrplclssjgpxqxzvk.supabase.co/rest/v1/site_settings?select=key,value&key=eq.primary_font', {
+    headers: { 'apikey': 'sb_publishable_LxFCbmdg9ZlhDbr2np_ufQ_RcWTgcS8', 'Authorization': 'Bearer sb_publishable_LxFCbmdg9ZlhDbr2np_ufQ_RcWTgcS8' }
+  }).then(function(r) { return r.json(); }).then(function(rows) {
+    if (!rows || !rows.length) return;
+    var val = rows[0].value;
+    if (!STACKS[val]) return;
+    localStorage.setItem('pct_font', val);
+    document.documentElement.style.setProperty('--font-primary', STACKS[val]);
+  }).catch(function() {});
+})();
+</script>
 </head>
 <body>
 
@@ -707,6 +740,7 @@ textarea.form-input { resize: vertical; min-height: 80px; font-size: 14px; line-
       <tbody id="end-tbody"></tbody>
     </table>
   </div>
+
   <div class="end-actions">
     <a href="/" class="btn-green">Play Again</a>
     <a href="/leaderboard/" class="btn-outline">Leaderboard →</a>
@@ -1228,6 +1262,7 @@ function showEndScreen() {
   // Preload next game's photos while user reads results
   prepareNextGame();
 }
+
 
 async function submitGameScore() {
   const loadEl    = document.getElementById('submit-loading');

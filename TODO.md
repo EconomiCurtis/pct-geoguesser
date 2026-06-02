@@ -16,10 +16,25 @@ Hosted on Cloudflare Pages. Backend: Supabase (PostgreSQL + Google OAuth).
 - Photo stats recalculation tool in admin (after bulk deletes)
 - More photos / photo reassignment before launch
 - Social links on hiker profile page (requires new `social_links` columns in profiles)
+- Font toggle in Admin Site Settings: switch between Futura (default) and Open Sans across all public pages; stored in `site_settings.primary_font`, applied via `--font-primary` CSS var + localStorage cache to avoid flash on load
 
 ---
 
 ## Sorted
+
+### ✅ Leaderboard: highlight current player's row (2026-06-02)
+
+- When a logged-in player views `/leaderboard/`, their row is highlighted with a teal-tinted background and left accent border. Works on both All-Time and 90-Day tabs. No-op for logged-out visitors.
+
+---
+
+### ✅ Practice end screen: rank preview + CTAs (2026-05-31)
+
+- **Leaderboard rank preview:** After finishing a practice game, the end screen fetches the all-time leaderboard (raw `fetch()` to Supabase REST API, no CDN library needed) and shows what rank the practice score would achieve. Shows `#N out of X players` once there are 5+ scored players; below that threshold shows a nudge to try the scored game instead. Hides quietly on any network error.
+- **Three CTAs:** Replaced the single "Play Again" button with a primary "Try the Scored Game →" (green) plus "Practice Again" and "Leaderboard →" as outline buttons.
+- **Layout fix:** Centered the two outline buttons and added `white-space:nowrap` so "Leaderboard →" never wraps mid-label.
+
+---
 
 ### ✅ Photo Locations + Map Links + Docs (2026-05-31)
 

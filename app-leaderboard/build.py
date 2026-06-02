@@ -10,6 +10,11 @@
 #   load. If value='true', a 90-Day tab appears alongside All-Time. Otherwise
 #   only All-Time is shown, with no tab bar.
 #
+# Row highlighting: init() calls sb.auth.getSession() to get the logged-in
+#   player's user_id. When building table rows, any row whose user_id matches
+#   gets a .lb-row-me class (teal tint + left accent border). No-op if not
+#   signed in. Applies to both All-Time and 90-Day tabs.
+#
 # To rebuild:
 #   python3 app-leaderboard/build.py
 #
@@ -62,10 +67,13 @@ html = f"""<!DOCTYPE html>
   --pct-green: #1D502E;
   --pct-teal:  #008080;
   --pct-white: #FFFFFF;
+  /* ── Font preference (overridden at runtime if site_settings primary_font
+        is set to 'open-sans'). Default: Futura stack. ── */
+  --font-primary: 'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif;
 }}
 
 body {{
-  font-family: 'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif;
+  font-family: var(--font-primary);
   background: var(--bg);
   color: var(--text);
   min-height: 100dvh;
@@ -171,6 +179,12 @@ body {{
 }}
 .lb-table tr:last-child td {{ border-bottom: none; }}
 .lb-table tbody tr:hover {{ background: var(--surface2); }}
+/* Highlight the logged-in player's own row */
+.lb-row-me {{
+  background: rgba(0, 128, 128, 0.10);
+  border-left: 3px solid var(--pct-teal);
+}}
+.lb-row-me:hover {{ background: rgba(0, 128, 128, 0.18); }}
 
 .rank-cell {{
   font-size: 16px;
@@ -223,6 +237,33 @@ body {{
   .hiker-link {{ font-size: 16px; }}
 }}
 </style>
+<script>
+/* ── Font preference ────────────────────────────────────────────────────────
+   Applies the site's primary_font setting from Supabase site_settings.
+   localStorage key 'pct_font' is read synchronously so the correct font
+   is set before first paint (no flash). A background fetch then updates
+   the cache if the setting has changed in the admin panel.
+   Values: 'futura' (default) | 'open-sans'  ── */
+(function() {{
+  var STACKS = {{
+    'futura':    "'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif",
+    'open-sans': "'Open Sans', Arial, sans-serif"
+  }};
+  var cached = localStorage.getItem('pct_font');
+  if (cached && STACKS[cached]) {{
+    document.documentElement.style.setProperty('--font-primary', STACKS[cached]);
+  }}
+  fetch('{SUPABASE_URL}/rest/v1/site_settings?select=key,value&key=eq.primary_font', {{
+    headers: {{ 'apikey': '{SUPABASE_ANON_KEY}', 'Authorization': 'Bearer {SUPABASE_ANON_KEY}' }}
+  }}).then(function(r) {{ return r.json(); }}).then(function(rows) {{
+    if (!rows || !rows.length) return;
+    var val = rows[0].value;
+    if (!STACKS[val]) return;
+    localStorage.setItem('pct_font', val);
+    document.documentElement.style.setProperty('--font-primary', STACKS[val]);
+  }}).catch(function() {{}});
+}})();
+</script>
 </head>
 <body>
 
@@ -273,6 +314,8 @@ const MEDALS = ['🥇','🥈','🥉'];
 // Current view: 'alltime' (default) or 'rolling'
 let currentView = 'alltime';
 let rollingEnabled = false;
+// Logged-in user's ID — set in init(); null if not signed in
+let currentUserId = null;
 
 function showState(id) {{
   ['state-loading','state-empty','state-error','lb-table']
@@ -340,6 +383,10 @@ async function loadScores() {{
         : '';
 
       const tr = document.createElement('tr');
+      // Highlight the current player's own row
+      if (currentUserId && row.user_id === currentUserId) {{
+        tr.classList.add('lb-row-me');
+      }}
       tr.innerHTML = `
         <td class="rank-cell">${{rankHtml}}</td>
         <td class="name-cell">
@@ -360,6 +407,12 @@ async function loadScores() {{
 }}
 
 async function init() {{
+  // Identify the logged-in player (if any) so their row can be highlighted
+  try {{
+    const {{ data: {{ session }} }} = await sb.auth.getSession();
+    currentUserId = session?.user?.id ?? null;
+  }} catch (_) {{}}
+
   // Check admin setting: show_rolling_leaderboard
   try {{
     const {{ data }} = await sb

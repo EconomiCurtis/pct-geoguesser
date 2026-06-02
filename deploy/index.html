@@ -37,10 +37,13 @@
   --pct-green: #1D502E;   /* forest green  — scored game button, accents */
   --pct-teal:  #008080;   /* teal/dark cyan — practice button, links     */
   --pct-white: #FFFFFF;
+  /* ── Font preference (overridden at runtime by font-pref.js if site_settings
+        primary_font = 'open-sans'). Default: Futura stack. ── */
+  --font-primary: 'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif;
 }
 
 body {
-  font-family: 'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif;
+  font-family: var(--font-primary);
   background: var(--bg);
   color: var(--text);
   min-height: 100dvh;
@@ -148,11 +151,12 @@ h1 span { color: var(--pct-teal); }
 .btn-cta:hover  { filter: brightness(1.25); transform: translateY(-1px); }
 .btn-cta:active { transform: translateY(0); }
 
-/* Stack vertically on very narrow screens */
-@media (max-width: 380px) {
+/* Stack vertically on phones */
+@media (max-width: 480px) {
   .start-buttons { flex-direction: column; }
   .btn-cta { width: 100%; }
 }
+.btn-cta { white-space: nowrap; }
 
 /* ── Footer links ─────────────────────────────────────── */
 .footer-links { font-size: 12px; color: var(--muted); text-align: center; }
@@ -180,6 +184,33 @@ h1 span { color: var(--pct-teal); }
   .btn-cta { font-size: 18px; padding: 15px 16px; }
 }
 </style>
+<script>
+/* ── Font preference ────────────────────────────────────────────────────────
+   Applies the site's primary_font setting from Supabase site_settings.
+   localStorage key 'pct_font' is read synchronously so the correct font
+   is set before first paint (no flash). A background fetch then updates
+   the cache if the setting has changed in the admin panel.
+   Values: 'futura' (default) | 'open-sans'  ── */
+(function() {
+  var STACKS = {
+    'futura':    "'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif",
+    'open-sans': "'Open Sans', Arial, sans-serif"
+  };
+  var cached = localStorage.getItem('pct_font');
+  if (cached && STACKS[cached]) {
+    document.documentElement.style.setProperty('--font-primary', STACKS[cached]);
+  }
+  fetch('https://alrjrplclssjgpxqxzvk.supabase.co/rest/v1/site_settings?select=key,value&key=eq.primary_font', {
+    headers: { 'apikey': 'sb_publishable_LxFCbmdg9ZlhDbr2np_ufQ_RcWTgcS8', 'Authorization': 'Bearer sb_publishable_LxFCbmdg9ZlhDbr2np_ufQ_RcWTgcS8' }
+  }).then(function(r) { return r.json(); }).then(function(rows) {
+    if (!rows || !rows.length) return;
+    var val = rows[0].value;
+    if (!STACKS[val]) return;
+    localStorage.setItem('pct_font', val);
+    document.documentElement.style.setProperty('--font-primary', STACKS[val]);
+  }).catch(function() {});
+})();
+</script>
 </head>
 <body>
 

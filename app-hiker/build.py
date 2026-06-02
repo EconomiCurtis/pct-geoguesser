@@ -62,10 +62,13 @@ html = f"""<!DOCTYPE html>
   --pct-teal:  #008080;
   --pct-white: #FFFFFF;
   --gold:      #f59e0b;
+  /* ── Font preference (overridden at runtime if site_settings primary_font
+        is set to 'open-sans'). Default: Futura stack. ── */
+  --font-primary: 'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif;
 }}
 
 body {{
-  font-family: 'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif;
+  font-family: var(--font-primary);
   background: var(--bg);
   color: var(--text);
   min-height: 100dvh;
@@ -327,6 +330,33 @@ body {{
   .games-table td {{ padding: 12px 16px; }}
 }}
 </style>
+<script>
+/* ── Font preference ────────────────────────────────────────────────────────
+   Applies the site's primary_font setting from Supabase site_settings.
+   localStorage key 'pct_font' is read synchronously so the correct font
+   is set before first paint (no flash). A background fetch then updates
+   the cache if the setting has changed in the admin panel.
+   Values: 'futura' (default) | 'open-sans'  ── */
+(function() {{
+  var STACKS = {{
+    'futura':    "'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif",
+    'open-sans': "'Open Sans', Arial, sans-serif"
+  }};
+  var cached = localStorage.getItem('pct_font');
+  if (cached && STACKS[cached]) {{
+    document.documentElement.style.setProperty('--font-primary', STACKS[cached]);
+  }}
+  fetch('{SUPABASE_URL}/rest/v1/site_settings?select=key,value&key=eq.primary_font', {{
+    headers: {{ 'apikey': '{SUPABASE_ANON_KEY}', 'Authorization': 'Bearer {SUPABASE_ANON_KEY}' }}
+  }}).then(function(r) {{ return r.json(); }}).then(function(rows) {{
+    if (!rows || !rows.length) return;
+    var val = rows[0].value;
+    if (!STACKS[val]) return;
+    localStorage.setItem('pct_font', val);
+    document.documentElement.style.setProperty('--font-primary', STACKS[val]);
+  }}).catch(function() {{}});
+}})();
+</script>
 </head>
 <body>
 

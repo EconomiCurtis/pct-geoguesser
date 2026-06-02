@@ -473,9 +473,47 @@ textarea.form-input { resize: vertical; min-height: 80px; font-size: 14px; line-
   </div>
 """
 
+    # ── CSS: practice rank card (practice only) ──────────────
+    css_practice_rank = '' if not practice else """
+.practice-rank-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px 20px;
+  width: 100%; max-width: 400px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.prc-loading { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 8px; }
+.prc-result  { display: none; flex-direction: column; align-items: center; gap: 5px; }
+.prc-label   { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.prc-rank    { font-size: 48px; font-weight: 800; line-height: 1; color: var(--pct-teal); font-variant-numeric: tabular-nums; }
+.prc-sub     { font-size: 12px; color: var(--muted); }
+.prc-lb-link { font-size: 13px; color: var(--pct-teal); text-decoration: underline; }
+.prc-lb-link:hover { color: #5fd4d4; }
+"""
+
+    # ── HTML: practice rank card (practice only) ──────────────
+    html_practice_rank = '' if not practice else """
+  <div class="practice-rank-card" id="prc-card">
+    <div class="prc-loading" id="prc-loading">
+      <div class="loading-spinner-sm"></div>
+      Checking leaderboard…
+    </div>
+    <div class="prc-result" id="prc-result">
+      <p class="prc-label" id="prc-label"></p>
+      <span class="prc-rank" id="prc-rank"></span>
+      <p class="prc-sub" id="prc-sub"></p>
+      <a href="/leaderboard/" class="prc-lb-link">View Full Leaderboard →</a>
+    </div>
+  </div>"""
+
     # ── HTML: end screen actions ──────────────────────────────
     if practice:
-        end_actions = '  <button class="btn-green" onclick="window.location.href=\'/\'">Play Again</button>'
+        end_actions = """  <div class="end-actions" style="flex-direction:column;max-width:400px;align-items:center">
+    <a href="/game/" class="btn-green" style="text-align:center;width:100%">Try the Scored Game →</a>
+    <div class="end-actions" style="margin-top:0;justify-content:center">
+      <button class="btn-outline" style="white-space:nowrap" onclick="startGame()">Practice Again</button>
+      <a href="/leaderboard/" class="btn-outline" style="text-align:center;white-space:nowrap">Leaderboard →</a>
+    </div>
+  </div>"""
     else:
         end_actions = """  <div class="end-actions">
     <a href="/" class="btn-green">Play Again</a>
@@ -813,6 +851,66 @@ function selectGamePhotos() {
   submitGameScore();
 """
 
+    # ── JS: practice rank fetch (practice only) ──────────────
+    # Uses the Supabase REST API directly (raw fetch) -- no CDN library needed.
+    # Pulls top-500 scored sessions, dedupes to best score per player, then
+    # computes what rank the practice score would achieve.
+    # Requires MIN_PLAYERS scored players before showing a number; below that
+    # the card nudges the player to try the scored game instead.
+    js_practice_rank = '' if not practice else f"""
+// ── Practice rank preview ─────────────────────────────────
+async function fetchPracticeRank(myScore) {{
+  const MIN_PLAYERS = 5;
+  try {{
+    const res = await fetch(
+      '{SUPABASE_URL}/rest/v1/game_sessions?select=user_id,total_score&order=total_score.desc&limit=500',
+      {{ headers: {{ 'apikey': '{SUPABASE_ANON_KEY}', 'Authorization': 'Bearer {SUPABASE_ANON_KEY}' }} }}
+    );
+    if (!res.ok) throw new Error('fetch failed');
+    const rows = await res.json();
+
+    // Best score per player (rows already sorted desc, so first hit per user = best)
+    const best = {{}};
+    for (const r of rows) {{
+      if (best[r.user_id] === undefined) best[r.user_id] = parseFloat(r.total_score);
+    }}
+    const playerScores = Object.values(best).sort((a, b) => b - a);
+    const totalPlayers = playerScores.length;
+
+    const loadEl   = document.getElementById('prc-loading');
+    const resultEl = document.getElementById('prc-result');
+    const labelEl  = document.getElementById('prc-label');
+    const rankEl   = document.getElementById('prc-rank');
+    const subEl    = document.getElementById('prc-sub');
+
+    loadEl.style.display  = 'none';
+    resultEl.style.display = 'flex';
+
+    if (totalPlayers < MIN_PLAYERS) {{
+      labelEl.textContent = 'Leaderboard is just getting started';
+      rankEl.textContent  = '🌲';
+      subEl.textContent   = 'Be among the first to post a score — try the scored game.';
+    }} else {{
+      const rank = playerScores.filter(s => s > myScore).length + 1;
+      labelEl.textContent = 'Your score would rank';
+      rankEl.textContent  = rank > 100 ? 'Top 100+' : '#' + rank;
+      subEl.textContent   = rank > 100
+        ? `outside the top 100 of ${{totalPlayers}} players`
+        : `out of ${{totalPlayers}} players on the all-time leaderboard`;
+    }}
+  }} catch (_) {{
+    // On any error, hide the card quietly rather than showing a broken state
+    const card = document.getElementById('prc-card');
+    if (card) card.style.display = 'none';
+  }}
+}}
+"""
+
+    # ── JS: practice rank call inside showEndScreen (practice only) ──
+    js_end_practice_rank_call = '' if not practice else """
+  fetchPracticeRank(total);
+"""
+
     # ── JS: kickoff ───────────────────────────────────────────
     if practice:
         js_kickoff = """
@@ -873,10 +971,13 @@ startGame();
   --sobo-col:  #c8a96e;
   --north-col: #6fd4a0;
   --south-col: #c8a96e;
+  /* ── Font preference (overridden at runtime if site_settings primary_font
+        is set to 'open-sans'). Default: Futura stack. ── */
+  --font-primary: 'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif;
 }}
 
 body {{
-  font-family: 'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif;
+  font-family: var(--font-primary);
   background: var(--bg);
   color: var(--text);
   height: 100dvh;
@@ -941,8 +1042,8 @@ h1 span {{ color: var(--pct-teal); }}
   background: var(--pct-green); color: var(--pct-white);
   border: none; border-radius: 10px;
   padding: 13px 36px; font-size: 16px; font-weight: 700;
+  font-family: inherit; letter-spacing: .01em; white-space: nowrap;
   cursor: pointer; transition: filter .15s, transform .1s;
-  letter-spacing: .01em; white-space: nowrap;
 }}
 .btn-green:hover {{ filter: brightness(1.25); transform: translateY(-1px); }}
 .btn-green:active {{ transform: translateY(0); }}
@@ -950,7 +1051,8 @@ h1 span {{ color: var(--pct-teal); }}
 .btn-outline {{
   background: transparent; color: var(--text);
   border: 1px solid var(--border); border-radius: 10px;
-  padding: 13px; font-size: 15px; font-weight: 600;
+  padding: 13px; font-size: 16px; font-weight: 700;
+  font-family: inherit; letter-spacing: .01em;
   cursor: pointer; width: 100%; transition: background .15s, border-color .15s;
   text-decoration: none; display: block; text-align: center;
 }}
@@ -1165,6 +1267,7 @@ h1 span {{ color: var(--pct-teal); }}
 .final-box .fb-unit  {{ font-size: 12px; color: var(--muted); margin-top: 3px; }}
 .final-avg {{ font-size: 16px; font-weight: 600; color: var(--muted); text-align: center; margin-top: -8px; }}
 {css_submit_card}
+{css_practice_rank}
 .end-table-wrap {{ width: 100%; max-width: 580px; overflow-x: auto; }}
 .end-table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
 .end-table th {{ padding: 6px 10px; font-size: 10px; text-transform: uppercase; letter-spacing: .09em; border-bottom: 1px solid var(--border); white-space: nowrap; font-weight: 700; }}
@@ -1212,10 +1315,38 @@ h1 span {{ color: var(--pct-teal); }}
   .rules-card {{ max-width: 580px; padding: 22px 26px; }}
   .rules-card h3 {{ font-size: 12px; margin-bottom: 14px; }}
   .rules-card li {{ font-size: 16px; }}
-  .btn-green {{ font-size: 18px; padding: 15px 44px; }}
+  .btn-green  {{ font-size: 18px; padding: 15px 44px; }}
+  .btn-outline {{ font-size: 18px; }}
   .signup-card {{ max-width: 480px; }}
 }}
 </style>
+<script>
+/* ── Font preference ────────────────────────────────────────────────────────
+   Applies the site's primary_font setting from Supabase site_settings.
+   localStorage key 'pct_font' is read synchronously so the correct font
+   is set before first paint (no flash). A background fetch then updates
+   the cache if the setting has changed in the admin panel.
+   Values: 'futura' (default) | 'open-sans'  ── */
+(function() {{
+  var STACKS = {{
+    'futura':    "'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif",
+    'open-sans': "'Open Sans', Arial, sans-serif"
+  }};
+  var cached = localStorage.getItem('pct_font');
+  if (cached && STACKS[cached]) {{
+    document.documentElement.style.setProperty('--font-primary', STACKS[cached]);
+  }}
+  fetch('{SUPABASE_URL}/rest/v1/site_settings?select=key,value&key=eq.primary_font', {{
+    headers: {{ 'apikey': '{SUPABASE_ANON_KEY}', 'Authorization': 'Bearer {SUPABASE_ANON_KEY}' }}
+  }}).then(function(r) {{ return r.json(); }}).then(function(rows) {{
+    if (!rows || !rows.length) return;
+    var val = rows[0].value;
+    if (!STACKS[val]) return;
+    localStorage.setItem('pct_font', val);
+    document.documentElement.style.setProperty('--font-primary', STACKS[val]);
+  }}).catch(function() {{}});
+}})();
+</script>
 </head>
 <body>
 
@@ -1331,6 +1462,7 @@ h1 span {{ color: var(--pct-teal); }}
       <tbody id="end-tbody"></tbody>
     </table>
   </div>
+{html_practice_rank}
 {end_actions}
 </div>
 
@@ -1656,10 +1788,11 @@ function showEndScreen() {{
   }});
 
   showScreen('screen-end');
-{js_end_submit_call}
+{js_end_submit_call}{js_end_practice_rank_call}
   // Preload next game's photos while user reads results
   prepareNextGame();
 }}
+{js_practice_rank}
 {js_submit}
 // ── Lightbox ──────────────────────────────────────────────
 function openLightbox(url, caption, mapUrl) {{

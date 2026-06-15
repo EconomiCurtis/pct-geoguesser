@@ -49,8 +49,9 @@ all_photos_json = json.dumps(
             "direction": r["direction"],
             "section":   r["section"],
             "date":      r.get("date", "") or "",
-            "photo_by":  r.get("photo_by", "") or "",
-            "map":       r.get("map", "") or "",
+            "photo_by":      r.get("photo_by", "") or "",
+            "photo_by_url":  r.get("photo_by_url", "") or "",
+            "map":           r.get("map", "") or "",
             "version":   r["version"],
             "url":       r["url"],
         }
@@ -665,7 +666,7 @@ function renderStats() {{
     const lbCaption = p.photo_by ? lbMeta + '|📷 ' + p.photo_by : lbMeta;
     tr.innerHTML = `
       <td class="td-thumb"><img src="${{p.url}}" alt="Mile ${{p.mile}}"
-           onclick="openLb('${{p.url}}', '${{lbCaption.replace(/'/g,'&#39;')}}', '${{(p.map||'').replace(/'/g,'&#39;')}}')" loading="lazy"></td>
+           onclick="openLb('${{p.url}}', '${{lbCaption.replace(/'/g,'&#39;')}}', '${{(p.map||'').replace(/'/g,'&#39;')}}', '${{(p.photo_by_url||'').replace(/'/g,'&#39;')}}')" loading="lazy"></td>
       <td style="font-weight:700;font-variant-numeric:tabular-nums">${{p.mile}}</td>
       <td style="color:var(--muted);font-size:12px">${{p.section}}</td>
       <td style="color:var(--muted)">${{p.direction}}</td>
@@ -917,15 +918,21 @@ function cancelEditName(userId, originalName) {{
 }}
 
 // ── Lightbox ──────────────────────────────────────────────
-function openLb(url, cap, mapUrl) {{
+// creditUrl: optional photographer URL — wraps credit text in a link when present
+function openLb(url, cap, mapUrl, creditUrl) {{
   document.getElementById('lb-img').src = url;
   const [meta, credit] = cap.split('|');
   const mapHtml = mapUrl
     ? ` <a href="${{mapUrl}}" target="_blank" rel="noopener" style="color:var(--teal);text-decoration:none;font-style:normal">map ↗</a>`
     : '';
-  const creditHtml = credit
-    ? '<br><span style="opacity:.7">' + credit + (mapUrl ? ' · ' + mapHtml.trim() : '') + '</span>'
-    : (mapUrl ? '<br>' + mapHtml.trim() : '');
+  const creditDisplay = credit
+    ? (creditUrl
+        ? '<a href="' + creditUrl + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">' + credit + '</a>'
+        : credit)
+    : '';
+  const creditHtml = creditDisplay || mapUrl
+    ? '<br><span style="opacity:.7">' + creditDisplay + (creditDisplay && mapUrl ? ' · ' : '') + (mapUrl ? mapHtml.trim() : '') + '</span>'
+    : '';
   document.getElementById('lb-cap').innerHTML = meta + creditHtml;
   document.getElementById('lb').style.display = 'flex';
 }}

@@ -170,9 +170,10 @@ def _photo_json(photo_rows):
         'section':   r['section'],
         'date':      r['date'],
         'url':       r['url'],
-        'photo_by':  r.get('photo_by', '') or '',
-        'tags':      r.get('tags', '') or '',
-        'map':       r.get('map', '') or '',
+        'photo_by':      r.get('photo_by', '') or '',
+        'photo_by_url':  r.get('photo_by_url', '') or '',  # optional link for the credit (e.g. Instagram)
+        'tags':          r.get('tags', '') or '',
+        'map':           r.get('map', '') or '',
     } for r in photo_rows])
 
 # ── Trail slider: section colours + generated HTML ──────────────────────────
@@ -708,8 +709,10 @@ async function submitGameScore() {{
     # Regular string (not f-string) — literal { } for JS braces
     if practice:
         js_photo_selection = """
-// ── Photo selection: Mile 1 always first, then 9 random by section ──
-const _FIXED_FIRST_ID   = 'tdlce';  // Mile 1 SoBo — always the opener
+// ── Photo selection: Mile 1 always first, Josh Sanders (Mile 2280) always second,
+//    then 8 random by section ──
+const _FIXED_FIRST_ID  = 'tdlce';  // Mile 0 SoBo — always the opener
+const _FIXED_SECOND_ID = 'ikjxl';  // Mile 2280 NoBo Josh Sanders — always photo #2
 const _PCT_SECTIONS = [
   'Southern California', 'The Sierra',
   'Northern California', 'Oregon', 'Washington',
@@ -723,15 +726,20 @@ function _isGT(p) {
 }
 
 function selectGamePhotos() {
-  const firstPhoto = photos.find(p => p.id === _FIXED_FIRST_ID);
-  const rest = photos.filter(p => p.id !== _FIXED_FIRST_ID);
+  const firstPhoto  = photos.find(p => p.id === _FIXED_FIRST_ID);
+  const secondPhoto = photos.find(p => p.id === _FIXED_SECOND_ID);
+  // Exclude both fixed photos from the random pool
+  const rest = photos.filter(p => p.id !== _FIXED_FIRST_ID && p.id !== _FIXED_SECOND_ID);
+  // Washington contributes 1 instead of 2 since the fixed second is from Washington
   const perSection = {
     'Southern California': 1,
-    'The Sierra': 2, 'Northern California': 2, 'Oregon': 2, 'Washington': 2,
+    'The Sierra': 2, 'Northern California': 2, 'Oregon': 2, 'Washington': 1,
   };
 
-  // Count GT from the fixed opener
-  let gtCount = (firstPhoto && _isGT(firstPhoto)) ? 1 : 0;
+  // Count GT from both fixed photos
+  let gtCount = 0;
+  if (firstPhoto  && _isGT(firstPhoto))  gtCount++;
+  if (secondPhoto && _isGT(secondPhoto)) gtCount++;
   const selected = [];
 
   for (const sec of _PCT_SECTIONS) {
@@ -779,7 +787,7 @@ function selectGamePhotos() {
     }
     selected.push(...picks);
   }
-  return [firstPhoto, ...selected.sort(() => Math.random() - .5)];
+  return [firstPhoto, secondPhoto, ...selected.sort(() => Math.random() - .5)];
 }
 """
     else:
@@ -1682,7 +1690,12 @@ async function showResultScreen(p, guess, timedOut, score, perfect) {{
   const rCreditEl  = document.getElementById('r-photo-by');
   const rMapEl     = document.getElementById('r-map-link');
   if (p.photo_by) {{
-    rCreditEl.textContent   = '📷 ' + p.photo_by;
+    // Render as a link if photo_by_url is present, otherwise plain text
+    if (p.photo_by_url) {{
+      rCreditEl.innerHTML = '📷 <a href="' + p.photo_by_url + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">' + p.photo_by + '</a>';
+    }} else {{
+      rCreditEl.textContent = '📷 ' + p.photo_by;
+    }}
     rCreditEl.style.display = '';
   }} else {{
     rCreditEl.style.display = 'none';
@@ -1762,7 +1775,7 @@ function showEndScreen() {{
     const tdThumb = document.createElement('td');
     tdThumb.className = 'td-thumb';
     tdThumb.innerHTML = `<img class="et-thumb" src="${{p.url}}" alt=""
-      onclick="openLightbox('${{p.url}}', '${{caption.replace(/'/g, "&#39;")}}', '${{(p.map||'').replace(/'/g, "&#39;")}}')">`;
+      onclick="openLightbox('${{p.url}}', '${{caption.replace(/'/g, "&#39;")}}', '${{(p.map||'').replace(/'/g, "&#39;")}}', '${{(p.photo_by_url||'').replace(/'/g, "&#39;")}}')">`;
 
 
     const tdGuess = document.createElement('td');
@@ -1795,15 +1808,21 @@ function showEndScreen() {{
 {js_practice_rank}
 {js_submit}
 // ── Lightbox ──────────────────────────────────────────────
-function openLightbox(url, caption, mapUrl) {{
+// creditUrl: optional photographer URL — wraps the credit text in a link when present
+function openLightbox(url, caption, mapUrl, creditUrl) {{
   document.getElementById('lb-img').src  = url;
   const [meta, credit] = caption.split('|');
   const mapHtml = mapUrl
     ? ` <a href="${{mapUrl}}" target="_blank" rel="noopener" style="color:var(--pct-teal);text-decoration:none;font-style:normal">map ↗</a>`
     : '';
-  const creditHtml = credit
-    ? '<br><span style="opacity:.7">' + credit + (mapUrl ? ' · ' + mapHtml.trim() : '') + '</span>'
-    : (mapUrl ? '<br>' + mapHtml.trim() : '');
+  const creditDisplay = credit
+    ? (creditUrl
+        ? '<a href="' + creditUrl + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">' + credit + '</a>'
+        : credit)
+    : '';
+  const creditHtml = creditDisplay || mapUrl
+    ? '<br><span style="opacity:.7">' + creditDisplay + (creditDisplay && mapUrl ? ' · ' : '') + (mapUrl ? mapHtml.trim() : '') + '</span>'
+    : '';
   document.getElementById('lb-caption').innerHTML = meta + creditHtml;
   document.getElementById('lightbox').classList.add('open');
 }}

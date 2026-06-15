@@ -14,8 +14,9 @@
 #   filename  : original raw filename (kept so re-runs can match existing rows)
 #   url       : public image URL, {IMAGE_BASE_URL}/{id}{ext}
 #   version   : v1-demo or v2-scored (new rows default to v2-scored)
-#   photo_by  : photographer credit (blank; set by hand in the CSV)
-#   tags      : e.g. "green-tunnel" (blank; set by hand in the CSV)
+#   photo_by      : photographer credit (blank; set by hand in the CSV)
+#   photo_by_url  : optional URL for the credit link (e.g. Instagram); blank by default
+#   tags          : e.g. "green-tunnel" (blank; set by hand in the CSV)
 #   lat/lon/map : geographic columns, left BLANK here and filled separately
 #                 by add_geo_columns.py (which needs the GPS spreadsheet).
 #
@@ -44,7 +45,7 @@ IMAGE_BASE_URL = "https://pct-geoguesser.pages.dev/miles"  # update here if host
 # lat/lon/map are populated by add_geo_columns.py, not here. They are included in
 # FIELDNAMES so existing geo values are preserved on re-run (and so DictWriter does
 # not choke on the extra keys); new rows below leave them blank.
-FIELDNAMES     = ["id", "mile", "direction", "section", "date", "filename", "url", "version", "photo_by", "tags", "lat", "lon", "map"]
+FIELDNAMES     = ["id", "mile", "direction", "section", "date", "filename", "url", "version", "photo_by", "photo_by_url", "tags", "lat", "lon", "map"]
 
 def make_url(row_id, filename):
     ext = os.path.splitext(filename)[1].lower()  # .jpeg or .jpg
@@ -124,8 +125,9 @@ for fname in all_files:
         "filename":  fname,
         "url":       make_url(uid, fname),
         "version":   "",   # default assigned below; manual edits in CSV are always preserved
-        "photo_by":  "",   # set manually after adding to CSV if needed
-        "tags":      "",   # e.g. "green-tunnel" -- set manually in CSV
+        "photo_by":      "",   # set manually after adding to CSV if needed
+        "photo_by_url":  "",   # optional URL for the photographer credit (e.g. Instagram)
+        "tags":          "",   # e.g. "green-tunnel" -- set manually in CSV
         "lat":       "",   # filled by add_geo_columns.py
         "lon":       "",   # filled by add_geo_columns.py
         "map":       "",   # filled by add_geo_columns.py

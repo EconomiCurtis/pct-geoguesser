@@ -281,7 +281,7 @@ h1 span {{ color: var(--pct-teal); }}
   <p class="footer-links">
     <a href="/leaderboard/">Leaderboard</a>
     <span class="dot">·</span>
-    <a href="/">About</a>
+    <a href="https://economicurtis.com/posts/004-pct-geoguesser/" target="_blank" rel="noopener">About</a>
   </p>
 
 </div>

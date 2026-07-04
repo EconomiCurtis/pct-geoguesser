@@ -428,7 +428,7 @@ textarea.form-input { resize: vertical; min-height: 80px; font-size: 14px; line-
   <p class="start-sub">How well do you know the Pacific Crest Trail?</p>
 {rules_card_html}
   <button class="btn-green" onclick="startGame()">Start Game →</button>
-  <p class="about-link">About PCT GeoGuesser</p>
+  <p class="about-link"><a href="https://economicurtis.com/posts/004-pct-geoguesser/" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">About PCT GeoGuesser</a></p>
 </div>
 """
     else:
@@ -452,7 +452,7 @@ textarea.form-input { resize: vertical; min-height: 80px; font-size: 14px; line-
     <span class="dot">·</span>
     <a href="#" onclick="signOut(); return false;">Sign out</a>
   </div>
-  <p class="about-link">About PCT GeoGuesser</p>
+  <p class="about-link"><a href="https://economicurtis.com/posts/004-pct-geoguesser/" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">About PCT GeoGuesser</a></p>
 </div>
 """
 

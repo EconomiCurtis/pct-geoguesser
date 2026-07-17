@@ -291,7 +291,11 @@ body {{
   </div>
   <div id="state-empty" class="state-msg" hidden>No scores yet — be the first!</div>
   <div id="state-error" class="state-msg" hidden>
-    <span id="error-msg">Something went wrong.</span>
+    <div style="font-size:32px;margin-bottom:12px">⛺</div>
+    <div id="error-msg" style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px">Leaderboard temporarily unavailable</div>
+    <div style="margin-bottom:20px">The server may be resting — try again in a minute.</div>
+    <a href="https://forms.gle/LSnZgRYr5yHG3AhR8" target="_blank" rel="noopener"
+       style="color:var(--pct-teal);font-size:13px;text-decoration:underline">Report an issue ↗</a>
   </div>
 
   <table id="lb-table" class="lb-table" hidden>
@@ -401,7 +405,13 @@ async function loadScores() {{
 
     showState('lb-table');
   }} catch (err) {{
-    document.getElementById('error-msg').textContent = err.message || 'Failed to load leaderboard.';
+    // Network/fetch failures show a friendly unavailable message; leave the
+    // default error-msg text in place (set in HTML) rather than surfacing a
+    // raw "TypeError: Failed to fetch" to the player.
+    const isNetworkErr = !err.message || err.message.toLowerCase().includes('fetch') || err.message.toLowerCase().includes('network');
+    if (!isNetworkErr) {{
+      document.getElementById('error-msg').textContent = err.message;
+    }}
     showState('state-error');
   }}
 }}

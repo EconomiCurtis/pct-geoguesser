@@ -2,8 +2,8 @@
 # build.py  —  PCT GeoGuesser  (admin dashboard)
 #
 # Generates deploy/admin/index.html — a private dashboard accessible only to
-# the admin Google account (curtisesjunk@gmail.com). Sign-in happens on /game/;
-# Firebase Auth shares the session across pages. The email check here only
+# the admin account (ADMIN_UID in misc/firebase_config.py). Sign-in happens on
+# /game/; Firebase Auth shares the session across pages. The uid check here only
 # gates the UI — firestore.rules is what restricts writes to the admin.
 #
 # Four tab views:
@@ -32,7 +32,7 @@ import sys
 
 HERE     = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "misc"))
-from firebase_config import FIREBASE_SDK_BASE, FIREBASE_CONFIG_JS
+from firebase_config import FIREBASE_SDK_BASE, FIREBASE_CONFIG_JS, ADMIN_UID
 
 CSV_PATH = os.path.join(HERE, "..", "misc", "photos.csv")
 OUT_PATH = os.path.join(HERE, "index.html")
@@ -59,7 +59,6 @@ all_photos_json = json.dumps(
     separators=(",", ":"),
 )
 
-ADMIN_EMAIL = "curtisesjunk@gmail.com"
 
 html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -457,7 +456,7 @@ td.val-muted {{ color: var(--muted); }}
 </div>
 
 <script>
-const ADMIN_EMAIL = '{ADMIN_EMAIL}';
+const ADMIN_UID   = '{ADMIN_UID}';
 const allPhotos   = {all_photos_json};
 
 // ── Firebase ──────────────────────────────────────────────
@@ -487,7 +486,7 @@ fbReady.then(({{ auth, A }}) => {{
       return;
     }}
     authChecked = true;
-    if (!user || user.email !== ADMIN_EMAIL) {{
+    if (!user || user.uid !== ADMIN_UID) {{
       document.getElementById('loading-view').textContent =
         user ? 'Access denied.' : 'Not signed in — go to /game/ first.';
       return;

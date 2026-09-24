@@ -1,0 +1,7 @@
+# Cloudflare Pages response headers (https://developers.cloudflare.com/pages/configuration/headers/)
+# Block other sites from framing these pages (clickjacking, e.g. tricking a
+# signed-in admin into pressing Delete) and switch off unused browser features.
+/*
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()

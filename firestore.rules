@@ -15,11 +15,11 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Keep in sync with ADMIN_EMAIL in app-admin/build.py
+    // Admin is identified by uid (not email, which would then be public in
+    // page source). Keep in sync with ADMIN_UID in misc/firebase_config.py.
     function isAdmin() {
       return request.auth != null
-        && request.auth.token.email == 'curtisesjunk@gmail.com'
-        && request.auth.token.email_verified == true;
+        && request.auth.uid == '1791279a-bd07-4345-9448-e06ce5807d97';
     }
 
     function isOwner(uid) {

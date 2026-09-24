@@ -20,6 +20,11 @@ FIREBASE_CONFIG = {
 
 FIREBASE_CONFIG_JS = json.dumps(FIREBASE_CONFIG)
 
+# Firebase Auth uid of the admin account. Used instead of the admin's email so
+# the email never appears in public page source. Keep in sync with isAdmin()
+# in firestore.rules.
+ADMIN_UID = "1791279a-bd07-4345-9448-e06ce5807d97"
+
 # Firestore REST endpoint — lets pages do simple public reads without the SDK.
 FIRESTORE_REST = (
     f"https://firestore.googleapis.com/v1/projects/{FIREBASE_CONFIG['projectId']}"

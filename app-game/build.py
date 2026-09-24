@@ -140,7 +140,7 @@
 #                           15-game cap and value ranges; the client pre-checks
 #                           the first two for friendlier messages. Then counts
 #                           90-day sessions with a higher score for the rank.
-#                           Test account (admin email) skips the DB write.
+#                           Admin account (ADMIN_UID) skips the DB write.
 #
 # Practice rank  (practice only) — Firestore REST runQuery, no SDK needed.
 # ──────────────────────────────────────────────────────────────────────────────
@@ -150,7 +150,7 @@ import csv, json, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, '..', 'misc'))
 from firebase_config import (FIREBASE_SDK_BASE, FIREBASE_CONFIG_JS, FONT_PREF_SCRIPT,
-                             FIRESTORE_REST, FIRESTORE_REST_KEY)
+                             FIRESTORE_REST, FIRESTORE_REST_KEY, ADMIN_UID)
 
 CSV_PATH      = os.path.join(HERE, '..', 'misc', 'photos.csv')
 MISC_BASE_URL = 'https://pct-geoguesser.economicurtis.com/misc'
@@ -688,7 +688,7 @@ async function submitGameScore() {{
   successEl.style.display = 'none';
   errorEl.style.display   = 'none';
 
-  if (currentUser.email === 'curtisesjunk@gmail.com') {{
+  if (currentUser.uid === '{ADMIN_UID}') {{
     loadEl.innerHTML = '<span style="color:var(--muted);font-size:13px">Test account — score not recorded.</span>';
     return;
   }}

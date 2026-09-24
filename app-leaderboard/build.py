@@ -4,16 +4,15 @@
 # Generates a single leaderboard page:
 #   app-leaderboard/index.html  →  deployed at /leaderboard/
 #
-# Default view: All-Time (highest score per player, ever).
-# 90-Day tab: shown only when the admin enables it via Site Settings.
-#   The page fetches `site_settings` where key='show_rolling_leaderboard' on
-#   load. If value='true', a 90-Day tab appears alongside All-Time. Otherwise
-#   only All-Time is shown, with no tab bar.
+# Data: Firestore collections `game_sessions` (scores), `profiles/{uid}`
+#   (trail_name, pct_year) and `site_settings/{key}` ({value}).
 #
-# Row highlighting: init() calls sb.auth.getSession() to get the logged-in
-#   player's user_id. When building table rows, any row whose user_id matches
-#   gets a .lb-row-me class (teal tint + left accent border). No-op if not
-#   signed in. Applies to both All-Time and 90-Day tabs.
+# Default view: All-Time (highest score per player, ever).
+# 90-Day tab: shown only when site_settings/show_rolling_leaderboard.value is
+#   'true'. Otherwise only All-Time is shown, with no tab bar.
+#
+# Row highlighting: the Firebase Auth uid of the signed-in player (if any)
+#   matches game_sessions.user_id; that row gets .lb-row-me.
 #
 # To rebuild:
 #   python3 app-leaderboard/build.py
@@ -25,7 +24,7 @@
 import os
 sys = __import__('sys')
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'misc'))
-from supabase_config import SUPABASE_URL, SUPABASE_ANON_KEY
+from firebase_config import FIREBASE_SDK_BASE, FIREBASE_CONFIG_JS, FONT_PREF_SCRIPT
 
 HERE         = os.path.dirname(os.path.abspath(__file__))
 MISC_BASE_URL = "https://pct-geoguesser.economicurtis.com/misc"
@@ -53,7 +52,6 @@ html = f"""<!DOCTYPE html>
 <link rel="icon" type="image/png" href="{MISC_BASE_URL}/pct-geoguesser-favicon.png">
 <link rel="apple-touch-icon" href="{MISC_BASE_URL}/pct-geoguesser-favicon.png">
 <meta name="theme-color" content="#0d1117">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
 
@@ -237,33 +235,7 @@ body {{
   .hiker-link {{ font-size: 16px; }}
 }}
 </style>
-<script>
-/* ── Font preference ────────────────────────────────────────────────────────
-   Applies the site's primary_font setting from Supabase site_settings.
-   localStorage key 'pct_font' is read synchronously so the correct font
-   is set before first paint (no flash). A background fetch then updates
-   the cache if the setting has changed in the admin panel.
-   Values: 'futura' (default) | 'open-sans'  ── */
-(function() {{
-  var STACKS = {{
-    'futura':    "'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif",
-    'open-sans': "'Open Sans', Arial, sans-serif"
-  }};
-  var cached = localStorage.getItem('pct_font');
-  if (cached && STACKS[cached]) {{
-    document.documentElement.style.setProperty('--font-primary', STACKS[cached]);
-  }}
-  fetch('{SUPABASE_URL}/rest/v1/site_settings?select=key,value&key=eq.primary_font', {{
-    headers: {{ 'apikey': '{SUPABASE_ANON_KEY}', 'Authorization': 'Bearer {SUPABASE_ANON_KEY}' }}
-  }}).then(function(r) {{ return r.json(); }}).then(function(rows) {{
-    if (!rows || !rows.length) return;
-    var val = rows[0].value;
-    if (!STACKS[val]) return;
-    localStorage.setItem('pct_font', val);
-    document.documentElement.style.setProperty('--font-primary', STACKS[val]);
-  }}).catch(function() {{}});
-}})();
-</script>
+{FONT_PREF_SCRIPT}
 </head>
 <body>
 
@@ -280,8 +252,8 @@ body {{
 
   <!-- Tab bar: hidden until 90-day setting is confirmed enabled -->
   <div class="tab-bar" id="tab-bar" style="display:none">
-    <button class="tab" id="tab-alltime" onclick="switchView('alltime')">All-Time</button>
-    <button class="tab" id="tab-rolling" onclick="switchView('rolling')">90-Day</button>
+    <button class="tab" id="tab-alltime">All-Time</button>
+    <button class="tab" id="tab-rolling">90-Day</button>
   </div>
 
   <p class="window-note" id="window-note"></p>
@@ -311,15 +283,25 @@ body {{
   </table>
 </div>
 
-<script>
-const sb = supabase.createClient('{SUPABASE_URL}', '{SUPABASE_ANON_KEY}');
+<script type="module">
+import {{ initializeApp }} from '{FIREBASE_SDK_BASE}/firebase-app.js';
+import {{ getAuth, onAuthStateChanged }} from '{FIREBASE_SDK_BASE}/firebase-auth.js';
+import {{ getFirestore, collection, query, where, orderBy, limit, getDocs, getDoc, doc }} from '{FIREBASE_SDK_BASE}/firebase-firestore.js';
+
+const app  = initializeApp({FIREBASE_CONFIG_JS});
+const auth = getAuth(app);
+const db   = getFirestore(app);
 const MEDALS = ['🥇','🥈','🥉'];
 
 // Current view: 'alltime' (default) or 'rolling'
 let currentView = 'alltime';
-let rollingEnabled = false;
 // Logged-in user's ID — set in init(); null if not signed in
 let currentUserId = null;
+
+// trail_name / pct_year are player-entered, so escape before innerHTML
+function esc(s) {{
+  return String(s).replace(/[&<>"']/g, c => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}})[c]);
+}}
 
 function showState(id) {{
   ['state-loading','state-empty','state-error','lb-table']
@@ -333,33 +315,39 @@ function switchView(view) {{
   loadScores();
 }}
 
+// Returns sessions sorted by total_score DESC
+async function fetchSessions() {{
+  const sessions = collection(db, 'game_sessions');
+  if (currentView === 'rolling') {{
+    // Firestore can't order by a different field than the range filter, so sort here
+    const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const snap = await getDocs(query(sessions, where('played_at', '>=', cutoff)));
+    return snap.docs.map(d => d.data()).sort((a, b) => b.total_score - a.total_score);
+  }}
+  const snap = await getDocs(query(sessions, orderBy('total_score', 'desc'), limit(500)));
+  return snap.docs.map(d => d.data());
+}}
+
 async function loadScores() {{
   showState('state-loading');
   try {{
-    let query = sb
-      .from('game_sessions')
-      .select('user_id, total_score, perfect_count, photo_count, played_at, profiles(id, trail_name, pct_year)')
-      .order('total_score', {{ ascending: false }})
-      .limit(500);
-
-    if (currentView === 'rolling') {{
-      const ago90 = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-      query = query.gte('played_at', ago90);
-    }}
-
-    const {{ data, error }} = await query;
-    if (error) throw error;
+    const sessions = await fetchSessions();
 
     // Keep only the best score per user (already sorted DESC, first hit = best)
     const seen = new Set();
-    const rows = [];
-    for (const row of (data ?? [])) {{
-      if (row.profiles && !seen.has(row.user_id)) {{
-        seen.add(row.user_id);
-        rows.push(row);
-        if (rows.length >= 100) break;
-      }}
+    const best = [];
+    for (const s of sessions) {{
+      if (seen.has(s.user_id)) continue;
+      seen.add(s.user_id);
+      best.push(s);
+      if (best.length >= 100) break;
     }}
+
+    const profileSnaps = await Promise.all(best.map(s => getDoc(doc(db, 'profiles', s.user_id))));
+    const rows = [];
+    best.forEach((s, i) => {{
+      if (profileSnaps[i].exists()) rows.push({{ ...s, profile: profileSnaps[i].data() }});
+    }});
 
     if (rows.length === 0) {{ showState('state-empty'); return; }}
 
@@ -371,9 +359,9 @@ async function loadScores() {{
     tbody.innerHTML = '';
     rows.forEach((row, i) => {{
       const rank      = i + 1;
-      const profileId = row.profiles.id;
-      const name      = row.profiles.trail_name || 'Anonymous';
-      const pctYear   = row.profiles.pct_year   || '';
+      const profileId = encodeURIComponent(row.user_id);
+      const name      = esc(row.profile.trail_name || 'Anonymous');
+      const pctYear   = esc(row.profile.pct_year   || '');
       const score     = Number(row.total_score).toFixed(1);
       const perfects  = row.perfect_count ?? 0;
       const total     = row.photo_count   ?? 10;
@@ -405,35 +393,32 @@ async function loadScores() {{
 
     showState('lb-table');
   }} catch (err) {{
-    // Network/fetch failures show a friendly unavailable message; leave the
-    // default error-msg text in place (set in HTML) rather than surfacing a
-    // raw "TypeError: Failed to fetch" to the player.
-    const isNetworkErr = !err.message || err.message.toLowerCase().includes('fetch') || err.message.toLowerCase().includes('network');
-    if (!isNetworkErr) {{
-      document.getElementById('error-msg').textContent = err.message;
-    }}
+    // Firestore errors (offline, permission-denied) aren't meaningful to
+    // players; keep the friendly default message and log the detail.
+    console.error('Leaderboard load failed:', err);
     showState('state-error');
   }}
 }}
 
 async function init() {{
-  // Identify the logged-in player (if any) so their row can be highlighted
-  try {{
-    const {{ data: {{ session }} }} = await sb.auth.getSession();
-    currentUserId = session?.user?.id ?? null;
-  }} catch (_) {{}}
+  document.getElementById('tab-alltime').addEventListener('click', () => switchView('alltime'));
+  document.getElementById('tab-rolling').addEventListener('click', () => switchView('rolling'));
 
-  // Check admin setting: show_rolling_leaderboard
+  // Identify the logged-in player (if any) so their row can be highlighted.
+  // The first onAuthStateChanged callback fires once the saved session is restored.
+  const userReady = new Promise(resolve => {{
+    const unsub = onAuthStateChanged(auth, user => {{
+      currentUserId = user ? user.uid : null;
+      unsub();
+      resolve();
+    }}, () => resolve());
+  }});
+
+  let rollingEnabled = false;
   try {{
-    const {{ data }} = await sb
-      .from('site_settings')
-      .select('value')
-      .eq('key', 'show_rolling_leaderboard')
-      .maybeSingle();
-    rollingEnabled = data?.value === 'true';
-  }} catch (_) {{
-    rollingEnabled = false;
-  }}
+    const snap = await getDoc(doc(db, 'site_settings', 'show_rolling_leaderboard'));
+    rollingEnabled = snap.exists() && snap.data().value === 'true';
+  }} catch (_) {{}}
 
   if (rollingEnabled) {{
     document.getElementById('tab-bar').style.display = '';
@@ -444,6 +429,7 @@ async function init() {{
   }}
 
   currentView = 'alltime';
+  await userReady;
   loadScores();
 }}
 

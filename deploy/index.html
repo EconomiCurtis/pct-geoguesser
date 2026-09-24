@@ -185,30 +185,21 @@ h1 span { color: var(--pct-teal); }
 }
 </style>
 <script>
-/* ── Font preference ────────────────────────────────────────────────────────
-   Applies the site's primary_font setting from Supabase site_settings.
-   localStorage key 'pct_font' is read synchronously so the correct font
-   is set before first paint (no flash). A background fetch then updates
-   the cache if the setting has changed in the admin panel.
-   Values: 'futura' (default) | 'open-sans'  ── */
 (function() {
   var STACKS = {
     'futura':    "'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif",
     'open-sans': "'Open Sans', Arial, sans-serif"
   };
-  var cached = localStorage.getItem('pct_font');
-  if (cached && STACKS[cached]) {
-    document.documentElement.style.setProperty('--font-primary', STACKS[cached]);
-  }
-  fetch('https://alrjrplclssjgpxqxzvk.supabase.co/rest/v1/site_settings?select=key,value&key=eq.primary_font', {
-    headers: { 'apikey': 'sb_publishable_LxFCbmdg9ZlhDbr2np_ufQ_RcWTgcS8', 'Authorization': 'Bearer sb_publishable_LxFCbmdg9ZlhDbr2np_ufQ_RcWTgcS8' }
-  }).then(function(r) { return r.json(); }).then(function(rows) {
-    if (!rows || !rows.length) return;
-    var val = rows[0].value;
+  function apply(val) {
     if (!STACKS[val]) return;
-    localStorage.setItem('pct_font', val);
     document.documentElement.style.setProperty('--font-primary', STACKS[val]);
-  }).catch(function() {});
+    try { localStorage.setItem('pct_font', val); } catch (_) {}
+  }
+  try { apply(localStorage.getItem('pct_font')); } catch (_) {}
+  fetch('https://firestore.googleapis.com/v1/projects/pct-geoguesser-9d535/databases/(default)/documents/site_settings/primary_font?key=AIzaSyD8HreF5tpB1sC_8w09V5g1IV2-O95uG54')
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(d) { if (d && d.fields && d.fields.value) apply(d.fields.value.stringValue); })
+    .catch(function() {});
 })();
 </script>
 </head>

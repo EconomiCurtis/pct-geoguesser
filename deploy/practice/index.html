@@ -20,7 +20,6 @@
 <link rel="apple-touch-icon" href="https://pct-geoguesser.economicurtis.com/misc/pct-geoguesser-favicon.png">
 <meta name="theme-color" content="#0d1117">
 <meta name="description" content="How well do you know the Pacific Crest Trail? Guess the trail mile from 10 photos.">
-
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -370,9 +369,9 @@ h1 span { color: var(--pct-teal); }
 .end-table .td-score { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
 .end-table .td-score.perfect { color: var(--pct-teal); }
 .end-table .td-score.off     { color: var(--muted); }
-.end-actions { display: flex; gap: 10px; width: 100%; max-width: 300px; }
-.end-actions .btn-green  { flex: 1; padding: 13px; }
-.end-actions .btn-outline { flex: 1; }
+.end-actions { display: flex; gap: 10px; width: 100%; max-width: 360px; }
+.end-actions .btn-green  { flex: 1; padding: 13px; text-align: center; text-decoration: none; }
+.end-actions .btn-outline { flex: 1; white-space: nowrap; }
 
 /* ── Lightbox ─────────────────────────────────────────── */
 #lightbox { display: none; position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.92); align-items: center; justify-content: center; flex-direction: column; gap: 12px; padding: 16px; }
@@ -405,30 +404,21 @@ h1 span { color: var(--pct-teal); }
 }
 </style>
 <script>
-/* ── Font preference ────────────────────────────────────────────────────────
-   Applies the site's primary_font setting from Supabase site_settings.
-   localStorage key 'pct_font' is read synchronously so the correct font
-   is set before first paint (no flash). A background fetch then updates
-   the cache if the setting has changed in the admin panel.
-   Values: 'futura' (default) | 'open-sans'  ── */
 (function() {
   var STACKS = {
     'futura':    "'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif",
     'open-sans': "'Open Sans', Arial, sans-serif"
   };
-  var cached = localStorage.getItem('pct_font');
-  if (cached && STACKS[cached]) {
-    document.documentElement.style.setProperty('--font-primary', STACKS[cached]);
-  }
-  fetch('https://alrjrplclssjgpxqxzvk.supabase.co/rest/v1/site_settings?select=key,value&key=eq.primary_font', {
-    headers: { 'apikey': 'sb_publishable_LxFCbmdg9ZlhDbr2np_ufQ_RcWTgcS8', 'Authorization': 'Bearer sb_publishable_LxFCbmdg9ZlhDbr2np_ufQ_RcWTgcS8' }
-  }).then(function(r) { return r.json(); }).then(function(rows) {
-    if (!rows || !rows.length) return;
-    var val = rows[0].value;
+  function apply(val) {
     if (!STACKS[val]) return;
-    localStorage.setItem('pct_font', val);
     document.documentElement.style.setProperty('--font-primary', STACKS[val]);
-  }).catch(function() {});
+    try { localStorage.setItem('pct_font', val); } catch (_) {}
+  }
+  try { apply(localStorage.getItem('pct_font')); } catch (_) {}
+  fetch('https://firestore.googleapis.com/v1/projects/pct-geoguesser-9d535/databases/(default)/documents/site_settings/primary_font?key=AIzaSyD8HreF5tpB1sC_8w09V5g1IV2-O95uG54')
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(d) { if (d && d.fields && d.fields.value) apply(d.fields.value.stringValue); })
+    .catch(function() {});
 })();
 </script>
 </head>
@@ -1029,12 +1019,25 @@ function showEndScreen() {
 async function fetchPracticeRank(myScore) {
   const MIN_PLAYERS = 5;
   try {
-    const res = await fetch(
-      'https://alrjrplclssjgpxqxzvk.supabase.co/rest/v1/game_sessions?select=user_id,total_score&order=total_score.desc&limit=500',
-      { headers: { 'apikey': 'sb_publishable_LxFCbmdg9ZlhDbr2np_ufQ_RcWTgcS8', 'Authorization': 'Bearer sb_publishable_LxFCbmdg9ZlhDbr2np_ufQ_RcWTgcS8' } }
-    );
+    const res = await fetch('https://firestore.googleapis.com/v1/projects/pct-geoguesser-9d535/databases/(default)/documents:runQuery?key=AIzaSyD8HreF5tpB1sC_8w09V5g1IV2-O95uG54', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ structuredQuery: {
+        from:    [{ collectionId: 'game_sessions' }],
+        select:  { fields: [{ fieldPath: 'user_id' }, { fieldPath: 'total_score' }] },
+        orderBy: [{ field: { fieldPath: 'total_score' }, direction: 'DESCENDING' }],
+        limit:   500,
+      } }),
+    });
     if (!res.ok) throw new Error('fetch failed');
-    const rows = await res.json();
+    // Firestore REST returns typed values; whole-number scores come back as integerValue
+    const rows = (await res.json()).filter(r => r.document).map(r => {
+      const f = r.document.fields;
+      return {
+        user_id:     f.user_id.stringValue,
+        total_score: Number(f.total_score.doubleValue ?? f.total_score.integerValue),
+      };
+    });
 
     // Best score per player (rows already sorted desc, so first hit per user = best)
     const best = {};

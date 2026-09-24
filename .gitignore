@@ -11,6 +11,14 @@ handoff.md
 # ── Wrangler CLI cache ────────────────────────────────────────────────────────
 .wrangler/
 
+# ── Python bytecode ───────────────────────────────────────────────────────────
+__pycache__/
+
+# ── Firebase CLI cache / logs ─────────────────────────────────────────────────
+.firebase/
+firebase-debug.log
+firestore-debug.log
+
 # ── Deploy: photos only (637 MB — GitHub-hostile, reproducible from img/ + photos.csv) ──
 deploy/miles/
 
@@ -25,6 +33,9 @@ misc/photos.csv
 # supabase_config.py holds the publishable anon key — safe to expose but
 # conventional to gitignore. Copy misc/supabase_config.template.py to get started.
 misc/supabase_config.py
+
+# Supabase table exports (player profiles + scores) used for the Firebase migration.
+misc/db-export/
 
 # ── Third-party source data (consumed by misc/ prep scripts) ──────────────────
 # Halfmile PCT GPS waypoints. add_geo_columns.py reads this to fill photos.csv

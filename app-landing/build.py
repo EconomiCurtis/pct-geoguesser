@@ -15,7 +15,7 @@
 import os
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'misc'))
-from supabase_config import SUPABASE_URL, SUPABASE_ANON_KEY
+from firebase_config import FONT_PREF_SCRIPT
 
 HERE          = os.path.dirname(os.path.abspath(__file__))
 OUT_PATH      = os.path.join(HERE, "index.html")
@@ -207,33 +207,7 @@ h1 span {{ color: var(--pct-teal); }}
   .btn-cta {{ font-size: 18px; padding: 15px 16px; }}
 }}
 </style>
-<script>
-/* ── Font preference ────────────────────────────────────────────────────────
-   Applies the site's primary_font setting from Supabase site_settings.
-   localStorage key 'pct_font' is read synchronously so the correct font
-   is set before first paint (no flash). A background fetch then updates
-   the cache if the setting has changed in the admin panel.
-   Values: 'futura' (default) | 'open-sans'  ── */
-(function() {{
-  var STACKS = {{
-    'futura':    "'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif",
-    'open-sans': "'Open Sans', Arial, sans-serif"
-  }};
-  var cached = localStorage.getItem('pct_font');
-  if (cached && STACKS[cached]) {{
-    document.documentElement.style.setProperty('--font-primary', STACKS[cached]);
-  }}
-  fetch('{SUPABASE_URL}/rest/v1/site_settings?select=key,value&key=eq.primary_font', {{
-    headers: {{ 'apikey': '{SUPABASE_ANON_KEY}', 'Authorization': 'Bearer {SUPABASE_ANON_KEY}' }}
-  }}).then(function(r) {{ return r.json(); }}).then(function(rows) {{
-    if (!rows || !rows.length) return;
-    var val = rows[0].value;
-    if (!STACKS[val]) return;
-    localStorage.setItem('pct_font', val);
-    document.documentElement.style.setProperty('--font-primary', STACKS[val]);
-  }}).catch(function() {{}});
-}})();
-</script>
+{FONT_PREF_SCRIPT}
 </head>
 <body>
 

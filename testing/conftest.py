@@ -52,6 +52,7 @@ def built_project(tmp_path_factory: pytest.TempPathFactory, project_root: Path) 
     misc = destination / "misc"
     misc.mkdir()
     shutil.copy2(project_root / "misc" / "photos.csv", misc / "photos.csv")
+    shutil.copy2(project_root / "misc" / "firebase_config.py", misc / "firebase_config.py")
     (misc / "supabase_config.py").write_text(
         'SUPABASE_URL = "https://testing.invalid"\n'
         'SUPABASE_ANON_KEY = "test-anon-key"\n'

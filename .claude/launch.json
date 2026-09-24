@@ -1,0 +1,20 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "zmt",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "/Users/curtiskephart/git_dir/PRO Data Viz/repo/viz/interactive/ZsoltMinderTrendalyzer/run.sh",
+        "--no-prep"
+      ],
+      "port": 8077
+    },
+    {
+      "name": "pct-site",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8765", "--directory", "deploy"],
+      "port": 8765
+    }
+  ]
+}

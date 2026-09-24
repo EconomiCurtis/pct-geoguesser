@@ -116,42 +116,41 @@
 #   Uses touch events; scale clamped 1–6×, pan clamped to keep image visible.
 #   resetPhotoZoom / resetResultZoom registered on window for cross-function use.
 #
-# Google Auth  (scored only — js_supabase block)
-#   signInWithGoogle()    → sb.auth.signInWithOAuth({ provider: 'google' })
-#                           Redirect back to /game/ after OAuth.
-#   onAuthStateChange()   → fires on load (INITIAL_SESSION) and on sign-out.
-#                           INITIAL_SESSION: if session exists, loadProfile();
-#                           else show auth screen.
-#   signOut()             → sb.auth.signOut()
+# Google Auth  (scored only — js_firebase block)
+#   Firebase SDK is loaded with dynamic import() into `fb` so this page's
+#   script stays classic (inline onclick handlers need global functions).
+#   signInWithGoogle()    → signInWithPopup (redirect sign-in is unreliable
+#                           when the auth domain differs from the site domain).
+#   onAuthStateChanged()  → fires on load and on every sign-in / sign-out.
+#                           Signed in: loadProfile(); else show auth screen.
+#   signOut()             → firebase signOut()
 #
-# User profiles  (scored only)
-#   loadProfile()         → fetches profiles row for currentUser.id.
-#                           If found, shows start screen. If not, shows signup.
-#   saveProfile()         → upserts profiles row (trail_name, pct_year, about).
-#                           Used for both first-time signup and profile edits.
+# User profiles  (scored only) — Firestore profiles/{uid}
+#   loadProfile()         → reads profiles/{uid}. If found, shows start screen.
+#                           If not, shows signup.
+#   saveProfile()         → creates (setDoc) or edits (updateDoc) the profile.
 #   showEditProfile()     → pre-fills signup form with current profile, shows
 #                           signup screen in edit mode.
 #   cancelEditProfile()   → returns to start screen without saving.
 #
 # Score submission  (scored only — js_submit block)
-#   submitGameScore()     → builds guessPayload array from gamePhotos/guesses/
-#                           scores arrays, calls sb.rpc('submit_game', {...}).
-#                           On success, queries game_sessions to compute the
-#                           player's 90-day rank and displays it.
+#   submitGameScore()     → one batched write: profile game counters +
+#                           game_sessions doc + one game_guesses doc per photo.
+#                           firestore.rules enforce the 1-minute rate limit,
+#                           15-game cap and value ranges; the client pre-checks
+#                           the first two for friendlier messages. Then counts
+#                           90-day sessions with a higher score for the rank.
 #                           Test account (admin email) skips the DB write.
 #
-# Database communication
-#   All DB calls use the Supabase JS client (sb = createClient(url, anonKey)).
-#   The anon key is safe to embed — RLS restricts what it can do.
-#   Writes go through the submit_game() SECURITY DEFINER RPC (bypasses RLS).
-#   Reads (leaderboard rank, profile) use .from().select() with RLS policies.
+# Practice rank  (practice only) — Firestore REST runQuery, no SDK needed.
 # ──────────────────────────────────────────────────────────────────────────────
 
 import csv, json, os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, '..', 'misc'))
-from supabase_config import SUPABASE_URL, SUPABASE_ANON_KEY
+from firebase_config import (FIREBASE_SDK_BASE, FIREBASE_CONFIG_JS, FONT_PREF_SCRIPT,
+                             FIRESTORE_REST, FIRESTORE_REST_KEY)
 
 CSV_PATH      = os.path.join(HERE, '..', 'misc', 'photos.csv')
 MISC_BASE_URL = 'https://pct-geoguesser.economicurtis.com/misc'
@@ -233,10 +232,6 @@ def make_html(mode):
         og_title   = 'PCT GeoGuesser — Scored'
         og_desc    = 'Compete on the global PCT leaderboard.'
         meta_desc  = 'Compete on the global PCT GeoGuesser leaderboard. Sign in with Google.'
-
-    # ── Supabase CDN (scored only) ────────────────────────────
-    supabase_cdn = '' if practice else \
-        '<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>'
 
     # ── CSS: scored-only screens ─────────────────────────────
     # Regular string (not f-string) — literal { } for CSS braces
@@ -517,47 +512,63 @@ textarea.form-input { resize: vertical; min-height: 80px; font-size: 14px; line-
   </div>"""
     else:
         end_actions = """  <div class="end-actions">
-    <a href="/" class="btn-green">Play Again</a>
+    <a href="/" class="btn-green">Play Again <svg width="0.9em" height="0.9em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.1em" aria-hidden="true"><path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/><path d="M20.5 3.5v5h-5"/></svg></a>
     <a href="/leaderboard/" class="btn-outline">Leaderboard →</a>
   </div>"""
 
-    # ── JS: Supabase init + auth functions (scored only) ──────
+    # ── JS: Firebase init + auth functions (scored only) ──────
     # f-string: {{ }} for JS braces, ${{ }} for JS template literals
-    js_supabase = '' if practice else f"""
-// ── Supabase ──────────────────────────────────────────────
-const {{ createClient }} = supabase;
-const sb = createClient('{SUPABASE_URL}', '{SUPABASE_ANON_KEY}');
+    js_firebase = '' if practice else f"""
+// ── Firebase ──────────────────────────────────────────────
+// Dynamic import() keeps this a classic script so the inline onclick
+// handlers can reach these functions. `fb` is set once the SDK loads; the
+// sign-in button only shows after that, so its click handler can open the
+// Google popup synchronously (Safari blocks popups opened after an await).
+let fb = null;
+const fbReady = Promise.all([
+  import('{FIREBASE_SDK_BASE}/firebase-app.js'),
+  import('{FIREBASE_SDK_BASE}/firebase-auth.js'),
+  import('{FIREBASE_SDK_BASE}/firebase-firestore.js'),
+]).then(([appMod, A, F]) => {{
+  const app = appMod.initializeApp({FIREBASE_CONFIG_JS});
+  fb = {{ auth: A.getAuth(app), db: F.getFirestore(app), A, F }};
+  return fb;
+}});
 
 let currentUser      = null;
 let currentProfile   = null;
 let isEditingProfile = false;
 
-sb.auth.onAuthStateChange(async (event, session) => {{
-  if (event === 'INITIAL_SESSION') {{
-    if (session) {{
-      currentUser = session.user;
+fbReady.then(({{ auth, A }}) => {{
+  A.onAuthStateChanged(auth, async user => {{
+    currentUser = user;
+    if (user) {{
       await loadProfile();
     }} else {{
+      currentProfile = null;
       showScreen('screen-auth');
     }}
-  }} else if (event === 'SIGNED_OUT') {{
-    currentUser = null;
-    currentProfile = null;
-    showScreen('screen-auth');
-  }}
+  }});
+}}).catch(err => {{
+  console.error('Firebase failed to load:', err);
+  showScreen('screen-auth');
 }});
 
 async function loadProfile() {{
-  const {{ data }} = await sb
-    .from('profiles')
-    .select('trail_name, pct_year, about')
-    .eq('id', currentUser.id)
-    .maybeSingle();
-  if (data) {{
-    currentProfile = data;
+  const {{ db, F }} = fb;
+  let snap;
+  try {{
+    snap = await F.getDoc(F.doc(db, 'profiles', currentUser.uid));
+  }} catch (err) {{
+    console.error('Profile load failed:', err);
+    showScreen('screen-auth');
+    return;
+  }}
+  if (snap.exists()) {{
+    currentProfile = snap.data();
     const greetEl = document.getElementById('greeting-name');
-    greetEl.textContent = data.trail_name;
-    greetEl.href = `/hiker/?id=${{currentUser.id}}`;
+    greetEl.textContent = currentProfile.trail_name;
+    greetEl.href = `/hiker/?id=${{currentUser.uid}}`;
     prepareNextGame();
     showScreen('screen-start');
   }} else {{
@@ -565,14 +576,24 @@ async function loadProfile() {{
   }}
 }}
 
-async function signInWithGoogle() {{
-  const btn = document.getElementById('btn-google');
+function signInWithGoogle() {{
+  if (!fb) return;
+  const btn   = document.getElementById('btn-google');
+  const icon  = btn.querySelector('svg');
+  const label = btn.childNodes[btn.childNodes.length - 1];
+  const labelText = label.textContent;
   btn.disabled = true;
-  btn.querySelector('svg').style.display = 'none';
-  btn.childNodes[btn.childNodes.length - 1].textContent = ' Redirecting…';
-  await sb.auth.signInWithOAuth({{
-    provider: 'google',
-    options: {{ redirectTo: 'https://pct-geoguesser.economicurtis.com/game/' }},
+  icon.style.display = 'none';
+  label.textContent = ' Signing in…';
+  // onAuthStateChanged takes over on success
+  fb.A.signInWithPopup(fb.auth, new fb.A.GoogleAuthProvider()).catch(err => {{
+    console.error('Sign-in failed:', err);
+    btn.disabled = false;
+    icon.style.display = '';
+    label.textContent = labelText;
+    if (err.code === 'auth/popup-blocked') {{
+      alert('Your browser blocked the Google sign-in window. Allow pop-ups for this site and try again.');
+    }}
   }});
 }}
 
@@ -593,24 +614,29 @@ async function saveProfile() {{
     hintEl.style.display = 'block';
     btn.textContent = 'Still saving…';
   }}, 5000);
-  const {{ error }} = await sb.from('profiles').upsert({{
-    id:         currentUser.id,
-    trail_name: trailName,
-    pct_year:   pctYear,
-    about:      about || null,
-  }});
+  const {{ db, F }} = fb;
+  const ref    = F.doc(db, 'profiles', currentUser.uid);
+  const fields = {{ trail_name: trailName, pct_year: pctYear, about: about || null }};
+  let saveErr = null;
+  try {{
+    if (currentProfile) await F.updateDoc(ref, fields);
+    else await F.setDoc(ref, {{ ...fields, created_at: F.serverTimestamp() }});
+  }} catch (err) {{
+    saveErr = err;
+    console.error('Profile save failed:', err);
+  }}
   clearTimeout(slowTimer);
   hintEl.style.display = 'none';
-  if (error) {{
+  if (saveErr) {{
     errEl.textContent = 'Error saving profile. Please try again.';
     btn.disabled = false;
     btn.textContent = isEditingProfile ? 'Save Changes' : 'Save and Play →';
     return;
   }}
-  currentProfile = {{ trail_name: trailName, pct_year: pctYear, about: about || null }};
+  currentProfile = {{ ...(currentProfile || {{}}), ...fields }};
   const greetEl = document.getElementById('greeting-name');
   greetEl.textContent = trailName;
-  greetEl.href = `/hiker/?id=${{currentUser.id}}`;
+  greetEl.href = `/hiker/?id=${{currentUser.uid}}`;
   document.getElementById('signup-subtitle').textContent = 'One-time setup — your name and year appear on the leaderboard.';
   document.getElementById('signup-cancel').style.display = 'none';
   btn.textContent = 'Save and Play →';
@@ -647,7 +673,7 @@ function updateAboutCount() {{
 }}
 
 async function signOut() {{
-  await sb.auth.signOut();
+  await fb.A.signOut(fb.auth);
 }}
 """
 
@@ -677,30 +703,63 @@ async function submitGameScore() {{
     timed_out:    guesses[i] === null,
   }}));
 
-  const {{ error }} = await sb.rpc('submit_game', {{
-    p_user_id:       currentUser.id,
-    p_total_score:   totalScore,
-    p_perfect_count: perfectCount,
-    p_guesses:       guessPayload,
-  }});
+  const {{ db, F }}  = fb;
+  const MAX_GAMES  = 15;
+  const gameCount  = currentProfile.game_count ?? 0;
+  const lastGameMs = currentProfile.last_game_at ? currentProfile.last_game_at.toMillis() : 0;
+  let failMsg = null;
+  if (gameCount >= MAX_GAMES) {{
+    failMsg = `You've reached the ${{MAX_GAMES}}-game limit for saved scores.`;
+  }} else if (Date.now() - lastGameMs < 60 * 1000) {{
+    failMsg = 'Please wait a minute between scored games.';
+  }} else {{
+    try {{
+      const now        = F.serverTimestamp();
+      const sessionRef = F.doc(F.collection(db, 'game_sessions'));
+      const batch      = F.writeBatch(db);
+      batch.update(F.doc(db, 'profiles', currentUser.uid), {{
+        game_count:      F.increment(1),
+        last_game_at:    now,
+        last_session_id: sessionRef.id,
+      }});
+      batch.set(sessionRef, {{
+        user_id:       currentUser.uid,
+        total_score:   totalScore,
+        perfect_count: perfectCount,
+        photo_count:   guessPayload.length,
+        played_at:     now,
+      }});
+      guessPayload.forEach((g, i) => {{
+        batch.set(F.doc(db, 'game_guesses', `${{sessionRef.id}}_${{i}}`), {{ session_id: sessionRef.id, ...g }});
+      }});
+      await batch.commit();
+      currentProfile.game_count      = gameCount + 1;
+      currentProfile.last_game_at    = F.Timestamp.now();
+      currentProfile.last_session_id = sessionRef.id;
+    }} catch (err) {{
+      console.error('Score submit failed:', err);
+      failMsg = 'Could not save your score. Please try again later.';
+    }}
+  }}
 
   loadEl.style.display = 'none';
 
-  if (error) {{
-    errorEl.textContent = error.message.includes('Rate limit')
-      ? 'Please wait a few minutes between scored games.'
-      : `Could not save score: ${{error.message}}`;
+  if (failMsg) {{
+    errorEl.textContent = failMsg;
     errorEl.style.display = 'block';
     return;
   }}
 
-  const ago90 = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-  const {{ count }} = await sb
-    .from('game_sessions')
-    .select('*', {{ count: 'exact', head: true }} )
-    .gt('total_score', totalScore)
-    .gte('played_at', ago90);
-  document.getElementById('rank-num').textContent = `#${{(count ?? 0) + 1}}`;
+  // Rank = 1 + sessions in the last 90 days that scored higher
+  let rankText = '—';
+  try {{
+    const ago90 = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const snap  = await F.getDocs(F.query(F.collection(db, 'game_sessions'), F.where('played_at', '>=', ago90)));
+    rankText = `#${{snap.docs.filter(d => d.data().total_score > totalScore).length + 1}}`;
+  }} catch (err) {{
+    console.error('Rank lookup failed:', err);
+  }}
+  document.getElementById('rank-num').textContent = rankText;
   successEl.style.display = 'flex';
 }}
 """
@@ -860,7 +919,7 @@ function selectGamePhotos() {
 """
 
     # ── JS: practice rank fetch (practice only) ──────────────
-    # Uses the Supabase REST API directly (raw fetch) -- no CDN library needed.
+    # Uses the Firestore REST API directly (raw fetch) -- no SDK needed.
     # Pulls top-500 scored sessions, dedupes to best score per player, then
     # computes what rank the practice score would achieve.
     # Requires MIN_PLAYERS scored players before showing a number; below that
@@ -870,12 +929,25 @@ function selectGamePhotos() {
 async function fetchPracticeRank(myScore) {{
   const MIN_PLAYERS = 5;
   try {{
-    const res = await fetch(
-      '{SUPABASE_URL}/rest/v1/game_sessions?select=user_id,total_score&order=total_score.desc&limit=500',
-      {{ headers: {{ 'apikey': '{SUPABASE_ANON_KEY}', 'Authorization': 'Bearer {SUPABASE_ANON_KEY}' }} }}
-    );
+    const res = await fetch('{FIRESTORE_REST}:runQuery?key={FIRESTORE_REST_KEY}', {{
+      method:  'POST',
+      headers: {{ 'Content-Type': 'application/json' }},
+      body: JSON.stringify({{ structuredQuery: {{
+        from:    [{{ collectionId: 'game_sessions' }}],
+        select:  {{ fields: [{{ fieldPath: 'user_id' }}, {{ fieldPath: 'total_score' }}] }},
+        orderBy: [{{ field: {{ fieldPath: 'total_score' }}, direction: 'DESCENDING' }}],
+        limit:   500,
+      }} }}),
+    }});
     if (!res.ok) throw new Error('fetch failed');
-    const rows = await res.json();
+    // Firestore REST returns typed values; whole-number scores come back as integerValue
+    const rows = (await res.json()).filter(r => r.document).map(r => {{
+      const f = r.document.fields;
+      return {{
+        user_id:     f.user_id.stringValue,
+        total_score: Number(f.total_score.doubleValue ?? f.total_score.integerValue),
+      }};
+    }});
 
     // Best score per player (rows already sorted desc, so first hit per user = best)
     const best = {{}};
@@ -929,7 +1001,7 @@ startGame();
     else:
         js_kickoff = """
 // ── Kick off ──────────────────────────────────────────────
-// Auth handled by onAuthStateChange above — INITIAL_SESSION fires on load.
+// Auth handled by onAuthStateChanged above — it fires once on load.
 """
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -958,7 +1030,6 @@ startGame();
 <link rel="apple-touch-icon" href="{MISC_BASE_URL}/pct-geoguesser-favicon.png">
 <meta name="theme-color" content="#0d1117">
 <meta name="description" content="{meta_desc}">
-{supabase_cdn}
 <style>
 *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
 
@@ -1294,9 +1365,9 @@ h1 span {{ color: var(--pct-teal); }}
 .end-table .td-score {{ text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }}
 .end-table .td-score.perfect {{ color: var(--pct-teal); }}
 .end-table .td-score.off     {{ color: var(--muted); }}
-.end-actions {{ display: flex; gap: 10px; width: 100%; max-width: 300px; }}
-.end-actions .btn-green  {{ flex: 1; padding: 13px; }}
-.end-actions .btn-outline {{ flex: 1; }}
+.end-actions {{ display: flex; gap: 10px; width: 100%; max-width: 360px; }}
+.end-actions .btn-green  {{ flex: 1; padding: 13px; text-align: center; text-decoration: none; }}
+.end-actions .btn-outline {{ flex: 1; white-space: nowrap; }}
 
 /* ── Lightbox ─────────────────────────────────────────── */
 #lightbox {{ display: none; position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.92); align-items: center; justify-content: center; flex-direction: column; gap: 12px; padding: 16px; }}
@@ -1328,33 +1399,7 @@ h1 span {{ color: var(--pct-teal); }}
   .signup-card {{ max-width: 480px; }}
 }}
 </style>
-<script>
-/* ── Font preference ────────────────────────────────────────────────────────
-   Applies the site's primary_font setting from Supabase site_settings.
-   localStorage key 'pct_font' is read synchronously so the correct font
-   is set before first paint (no flash). A background fetch then updates
-   the cache if the setting has changed in the admin panel.
-   Values: 'futura' (default) | 'open-sans'  ── */
-(function() {{
-  var STACKS = {{
-    'futura':    "'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif",
-    'open-sans': "'Open Sans', Arial, sans-serif"
-  }};
-  var cached = localStorage.getItem('pct_font');
-  if (cached && STACKS[cached]) {{
-    document.documentElement.style.setProperty('--font-primary', STACKS[cached]);
-  }}
-  fetch('{SUPABASE_URL}/rest/v1/site_settings?select=key,value&key=eq.primary_font', {{
-    headers: {{ 'apikey': '{SUPABASE_ANON_KEY}', 'Authorization': 'Bearer {SUPABASE_ANON_KEY}' }}
-  }}).then(function(r) {{ return r.json(); }}).then(function(rows) {{
-    if (!rows || !rows.length) return;
-    var val = rows[0].value;
-    if (!STACKS[val]) return;
-    localStorage.setItem('pct_font', val);
-    document.documentElement.style.setProperty('--font-primary', STACKS[val]);
-  }}).catch(function() {{}});
-}})();
-</script>
+{FONT_PREF_SCRIPT}
 </head>
 <body>
 
@@ -1493,7 +1538,7 @@ h1 span {{ color: var(--pct-teal); }}
 
 <script>
 const photos = {game_data};
-{js_supabase}
+{js_firebase}
 // ── Config ────────────────────────────────────────────────
 const TIMER_SEC   = 60;
 const FULL_CREDIT = 3;

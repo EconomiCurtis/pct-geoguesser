@@ -2,21 +2,20 @@
 # build.py  —  PCT GeoGuesser  (admin dashboard)
 #
 # Generates deploy/admin/index.html — a private dashboard accessible only to
-# the admin Google account (curtisesjunk@gmail.com). All reads use the public
-# anon key; the email check is client-side (fine because all read data is
-# already public via RLS; this just controls UI access).
+# the admin Google account (curtisesjunk@gmail.com). Sign-in happens on /game/;
+# Firebase Auth shares the session across pages. The email check here only
+# gates the UI — firestore.rules is what restricts writes to the admin.
 #
 # Four tab views:
 #   - Recent Games   : last 100 scored games with player names + scores
-#   - Photo Stats    : every photo merged with Supabase stats, sortable; each
-#                      thumbnail opens a lightbox with a "map" deep link
-#   - Edit Database  : search players, delete games or full player records
+#   - Photo Stats    : every photo merged with stats computed from all
+#                      game_guesses, sortable; each thumbnail opens a lightbox
+#                      with a "map" deep link
+#   - Edit Database  : search players, rename, delete games or full players
 #   - Site Settings  : admin toggles (e.g. show/hide the 90-day leaderboard tab)
 #
-# Delete actions require two SECURITY DEFINER RPCs in Supabase:
-#   admin_delete_player_games(target_user_id UUID)
-#   admin_delete_player(target_user_id UUID)
-# See misc/supabase_admin_rpcs.sql for the SQL to paste in Supabase.
+# Deletes are batched Firestore deletes (sessions + their guesses, and the
+# profile for "Delete Player"). The player's Firebase Auth account remains.
 #
 # To rebuild:
 #   python3 app-admin/build.py
@@ -33,7 +32,7 @@ import sys
 
 HERE     = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "misc"))
-from supabase_config import SUPABASE_URL, SUPABASE_ANON_KEY
+from firebase_config import FIREBASE_SDK_BASE, FIREBASE_CONFIG_JS
 
 CSV_PATH = os.path.join(HERE, "..", "misc", "photos.csv")
 OUT_PATH = os.path.join(HERE, "index.html")
@@ -306,8 +305,6 @@ td.val-muted {{ color: var(--muted); }}
 </head>
 <body>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-
 <div id="loading-view">Checking authentication…</div>
 
 <nav id="nav-bar" style="display:none">
@@ -317,7 +314,7 @@ td.val-muted {{ color: var(--muted); }}
   </div>
   <div style="display:flex;gap:8px;align-items:center">
     <a href="/">← Site</a>
-    <button onclick="refreshAll()" title="Reload stats from Supabase">⟳ Refresh</button>
+    <button onclick="refreshAll()" title="Reload stats">⟳ Refresh</button>
     <button onclick="doSignOut()">Sign out</button>
   </div>
 </nav>
@@ -434,8 +431,7 @@ td.val-muted {{ color: var(--muted); }}
     </div>
     <div class="edit-note">
       <strong>⚠ "Delete Player"</strong> removes the profile and all game data.
-      Their Google auth account remains — remove it from <strong>Supabase → Authentication → Users</strong> to prevent re-signup.<br>
-      <strong>⚠ Photo stats</strong> are not recalculated after a delete.
+      Their Google sign-in account remains — remove it from <strong>Firebase console → Authentication → Users</strong> to prevent re-signup.
     </div>
   </section>
 
@@ -464,26 +460,48 @@ td.val-muted {{ color: var(--muted); }}
 const ADMIN_EMAIL = '{ADMIN_EMAIL}';
 const allPhotos   = {all_photos_json};
 
-const {{ createClient }} = supabase;
-const sb = createClient('{SUPABASE_URL}', '{SUPABASE_ANON_KEY}');
-
-// ── Auth ──────────────────────────────────────────────────
-sb.auth.onAuthStateChange(async (event, session) => {{
-  if (event === 'INITIAL_SESSION') {{
-    if (!session || session.user.email !== ADMIN_EMAIL) {{
-      document.getElementById('loading-view').textContent =
-        session ? 'Access denied.' : 'Not signed in — go to /game/ first.';
-      return;
-    }}
-    document.getElementById('nav-user').textContent = session.user.email;
-    document.getElementById('nav-bar').style.display = 'flex';
-    await Promise.all([loadAdminData(), loadSettings()]);
-  }} else if (event === 'SIGNED_OUT') {{
-    window.location.href = '/';
-  }}
+// ── Firebase ──────────────────────────────────────────────
+// Dynamic import() keeps this a classic script so inline onclick handlers work.
+let fb = null;
+const fbReady = Promise.all([
+  import('{FIREBASE_SDK_BASE}/firebase-app.js'),
+  import('{FIREBASE_SDK_BASE}/firebase-auth.js'),
+  import('{FIREBASE_SDK_BASE}/firebase-firestore.js'),
+]).then(([appMod, A, F]) => {{
+  const app = appMod.initializeApp({FIREBASE_CONFIG_JS});
+  fb = {{ auth: A.getAuth(app), db: F.getFirestore(app), A, F }};
+  return fb;
 }});
 
-async function doSignOut() {{ await sb.auth.signOut(); }}
+// Player-entered text (trail names, years) goes into innerHTML below
+function esc(s) {{
+  return String(s ?? '').replace(/[&<>"']/g, c => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}})[c]);
+}}
+
+// ── Auth ──────────────────────────────────────────────────
+let authChecked = false;
+fbReady.then(({{ auth, A }}) => {{
+  A.onAuthStateChanged(auth, async user => {{
+    if (authChecked) {{
+      if (!user) window.location.href = '/';
+      return;
+    }}
+    authChecked = true;
+    if (!user || user.email !== ADMIN_EMAIL) {{
+      document.getElementById('loading-view').textContent =
+        user ? 'Access denied.' : 'Not signed in — go to /game/ first.';
+      return;
+    }}
+    document.getElementById('nav-user').textContent = user.email;
+    document.getElementById('nav-bar').style.display = 'flex';
+    await Promise.all([loadAdminData(), loadSettings()]);
+  }});
+}}).catch(err => {{
+  console.error('Firebase failed to load:', err);
+  document.getElementById('loading-view').textContent = 'Could not load Firebase.';
+}});
+
+async function doSignOut() {{ await fb.A.signOut(fb.auth); }}
 
 // ── Tab switching ─────────────────────────────────────────
 const TABS = ['games', 'stats', 'edit', 'settings'];
@@ -499,60 +517,89 @@ function switchTab(tab) {{
 // ── Site Settings ─────────────────────────────────────────
 async function loadSettings() {{
   try {{
-    const {{ data }} = await sb
-      .from('site_settings')
-      .select('key, value');
-    if (!data) return;
-    for (const row of data) {{
-      if (row.key === 'show_rolling_leaderboard') {{
-        document.getElementById('toggle-rolling').checked = row.value === 'true';
+    const {{ db, F }} = fb;
+    const snap = await F.getDocs(F.collection(db, 'site_settings'));
+    snap.forEach(d => {{
+      const value = d.data().value;
+      if (d.id === 'show_rolling_leaderboard') {{
+        document.getElementById('toggle-rolling').checked = value === 'true';
       }}
       // primary_font: 'futura' | 'open-sans' — drives font on all public pages
-      if (row.key === 'primary_font') {{
+      if (d.id === 'primary_font') {{
         const sel = document.getElementById('select-font');
-        if (sel) sel.value = row.value;
+        if (sel) sel.value = value;
       }}
-    }}
-  }} catch (_) {{}}
+    }});
+  }} catch (err) {{
+    console.error('Settings load failed:', err);
+  }}
 }}
 
 async function saveSetting(key, value) {{
   const statusEl = document.getElementById('settings-status');
   statusEl.textContent = 'Saving…';
   statusEl.style.color = 'var(--muted)';
-  const {{ error }} = await sb.rpc('admin_set_setting', {{
-    p_key:   key,
-    p_value: String(value),
-  }});
-  if (error) {{
-    statusEl.textContent = 'Error: ' + error.message;
-    statusEl.style.color = 'var(--red)';
-  }} else {{
+  try {{
+    const {{ db, F }} = fb;
+    await F.setDoc(F.doc(db, 'site_settings', key), {{ value: String(value), updated_at: F.serverTimestamp() }});
     statusEl.textContent = 'Saved ✓';
     statusEl.style.color = 'var(--teal)';
     setTimeout(() => {{ statusEl.textContent = ''; }}, 2500);
+  }} catch (err) {{
+    statusEl.textContent = 'Error: ' + err.message;
+    statusEl.style.color = 'var(--red)';
   }}
 }}
 
 // ── Data loading ──────────────────────────────────────────
 let mergedPhotos = [], sortKey = 'mile', sortAsc = true, versionFilter = null;
 
+// Per-photo stats from raw guesses. Error = |guess − true mile| for
+// non-timed-out guesses; SD is the population SD; perfect = error ≤ 3 mi.
+function computePhotoStats(guesses) {{
+  const acc = {{}};
+  for (const g of guesses) {{
+    const a = acc[g.photo_id] ??= {{ appearances: 0, errors: [] }};
+    a.appearances++;
+    if (!g.timed_out && g.guessed_mile != null) a.errors.push(Math.abs(g.guessed_mile - g.true_mile));
+  }}
+  const stats = {{}};
+  for (const [id, a] of Object.entries(acc)) {{
+    const n    = a.errors.length;
+    const mean = n ? a.errors.reduce((x, y) => x + y, 0) / n : null;
+    const sd   = n ? Math.sqrt(a.errors.reduce((x, e) => x + (e - mean) ** 2, 0) / n) : null;
+    stats[id] = {{
+      appearances:   a.appearances,
+      n_guesses:     n,
+      avg_error:     mean,
+      v_sd:          sd,
+      perfect_count: a.errors.filter(e => e <= 3).length,
+    }};
+  }}
+  return stats;
+}}
+
 async function loadAdminData() {{
-  const [gamesRes, statsRes, playerCountRes, gameCountRes] = await Promise.all([
-    sb.from('game_sessions')
-      .select('total_score, perfect_count, photo_count, played_at, profiles(id, trail_name, pct_year)')
-      .order('played_at', {{ ascending: false }}).limit(100),
-    sb.from('photo_stats').select('photo_id, appearances, n_guesses, avg_error, v_sd, perfect_count'),
-    sb.from('profiles').select('id', {{ count: 'exact', head: true }}),
-    sb.from('game_sessions').select('id', {{ count: 'exact', head: true }}),
+  const {{ db, F }} = fb;
+  const [sessionsSnap, profilesSnap, guessesSnap] = await Promise.all([
+    F.getDocs(F.collection(db, 'game_sessions')),
+    F.getDocs(F.collection(db, 'profiles')),
+    F.getDocs(F.collection(db, 'game_guesses')),
   ]);
 
-  document.getElementById('chip-games').textContent   = (gameCountRes.count   ?? '—').toLocaleString();
-  document.getElementById('chip-players').textContent = (playerCountRes.count ?? '—').toLocaleString();
-  renderGames(gamesRes.data || []);
+  const profiles = {{}};
+  profilesSnap.forEach(d => {{ profiles[d.id] = {{ id: d.id, ...d.data() }}; }});
 
-  const statsMap = {{}};
-  for (const s of (statsRes.data || [])) statsMap[s.photo_id] = s;
+  const games = sessionsSnap.docs
+    .map(d => {{ const g = d.data(); return {{ ...g, played_at: g.played_at.toDate(), profiles: profiles[g.user_id] }}; }})
+    .sort((a, b) => b.played_at - a.played_at)
+    .slice(0, 100);
+
+  document.getElementById('chip-games').textContent   = sessionsSnap.size.toLocaleString();
+  document.getElementById('chip-players').textContent = profilesSnap.size.toLocaleString();
+  renderGames(games);
+
+  const statsMap = computePhotoStats(guessesSnap.docs.map(d => d.data()));
   document.getElementById('chip-photos').textContent = Object.keys(statsMap).length;
 
   mergedPhotos = allPhotos.map(p => ({{
@@ -570,12 +617,13 @@ async function loadAdminData() {{
 }}
 
 async function refreshChips() {{
-  const [pRes, gRes] = await Promise.all([
-    sb.from('profiles').select('id', {{ count: 'exact', head: true }}),
-    sb.from('game_sessions').select('id', {{ count: 'exact', head: true }}),
+  const {{ db, F }} = fb;
+  const [p, g] = await Promise.all([
+    F.getCountFromServer(F.collection(db, 'profiles')),
+    F.getCountFromServer(F.collection(db, 'game_sessions')),
   ]);
-  document.getElementById('chip-games').textContent   = (gRes.count ?? '—').toLocaleString();
-  document.getElementById('chip-players').textContent = (pRes.count ?? '—').toLocaleString();
+  document.getElementById('chip-games').textContent   = g.data().count.toLocaleString();
+  document.getElementById('chip-players').textContent = p.data().count.toLocaleString();
 }}
 
 async function refreshAll() {{
@@ -601,15 +649,15 @@ function renderGames(games) {{
     const date = new Date(g.played_at);
     const dateStr = date.toLocaleDateString('en-US', {{ month:'short', day:'numeric', year:'numeric' }})
                   + ' ' + date.toLocaleTimeString('en-US', {{ hour:'2-digit', minute:'2-digit' }});
-    const hikerUrl  = p?.id ? `/hiker/?id=${{p.id}}` : null;
+    const hikerUrl  = p?.id ? `/hiker/?id=${{encodeURIComponent(p.id)}}` : null;
     const nameHtml  = p?.trail_name
-      ? (hikerUrl ? `<a href="${{hikerUrl}}" style="color:var(--teal);font-weight:600;text-decoration:none" target="_blank">${{p.trail_name}}</a>`
-                  : `<span style="color:var(--teal);font-weight:600">${{p.trail_name}}</span>`)
+      ? (hikerUrl ? `<a href="${{hikerUrl}}" style="color:var(--teal);font-weight:600;text-decoration:none" target="_blank">${{esc(p.trail_name)}}</a>`
+                  : `<span style="color:var(--teal);font-weight:600">${{esc(p.trail_name)}}</span>`)
       : '—';
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${{nameHtml}}</td>
-      <td style="color:var(--muted)">${{p?.pct_year ?? '—'}}</td>
+      <td style="color:var(--muted)">${{esc(p?.pct_year ?? '—')}}</td>
       <td style="font-variant-numeric:tabular-nums;font-weight:600">${{Number(g.total_score).toFixed(1)}}</td>
       <td style="color:var(--muted)">${{g.perfect_count}} / ${{g.photo_count}}</td>
       <td style="color:var(--muted);font-size:12px">${{dateStr}}</td>`;
@@ -726,21 +774,25 @@ async function doSearch() {{
   const resultsEl = document.getElementById('search-results');
   resultsEl.innerHTML = '<div class="state-row">Searching…</div>';
 
-  let query;
-  if (q) {{
-    query = sb.from('profiles').select('id, trail_name, pct_year')
-      .ilike('trail_name', `%${{q}}%`).order('trail_name').limit(25);
-  }} else {{
-    query = sb.from('profiles').select('id, trail_name, pct_year')
-      .order('id', {{ ascending: false }}).limit(25);
-  }}
-
-  const {{ data, error }} = await query;
-  if (error) {{
-    resultsEl.innerHTML = `<div class="state-row" style="color:var(--red)">Error: ${{error.message}}</div>`;
+  // Firestore has no substring search; the player list is small, so filter here.
+  let data;
+  try {{
+    const {{ db, F }} = fb;
+    const snap = await F.getDocs(F.collection(db, 'profiles'));
+    const all  = snap.docs.map(d => ({{ id: d.id, ...d.data() }}));
+    if (q) {{
+      const needle = q.toLowerCase();
+      data = all.filter(p => (p.trail_name || '').toLowerCase().includes(needle))
+                .sort((a, b) => (a.trail_name || '').localeCompare(b.trail_name || ''));
+    }} else {{
+      data = all.sort((a, b) => (b.created_at?.toMillis() ?? 0) - (a.created_at?.toMillis() ?? 0));
+    }}
+    data = data.slice(0, 25);
+  }} catch (err) {{
+    resultsEl.innerHTML = `<div class="state-row" style="color:var(--red)">Error: ${{esc(err.message)}}</div>`;
     return;
   }}
-  if (!data?.length) {{
+  if (!data.length) {{
     resultsEl.innerHTML = '<div class="state-row">No players found.</div>';
     return;
   }}
@@ -753,9 +805,9 @@ async function doSearch() {{
     row.id = 'player-row-' + p.id;
     // Build static content
     row.innerHTML = `
-      <a href="/hiker/?id=${{p.id}}" target="_blank" class="player-name" style="color:var(--teal);text-decoration:none">${{name}}</a>
-      <span class="player-year">${{year}}</span>
-      <span class="player-id">${{p.id}}</span>
+      <a href="/hiker/?id=${{encodeURIComponent(p.id)}}" target="_blank" class="player-name" style="color:var(--teal);text-decoration:none">${{esc(name)}}</a>
+      <span class="player-year">${{esc(year)}}</span>
+      <span class="player-id">${{esc(p.id)}}</span>
       <div class="player-actions" id="actions-${{p.id}}"></div>`;
     resultsEl.appendChild(row);
     // Fill action buttons via DOM API (avoids nested string-escaping)
@@ -764,9 +816,33 @@ async function doSearch() {{
 }}
 
 async function getGameCount(userId) {{
-  const {{ count }} = await sb.from('game_sessions')
-    .select('id', {{ count: 'exact', head: true }}).eq('user_id', userId);
-  return count ?? 0;
+  const {{ db, F }} = fb;
+  const snap = await F.getCountFromServer(F.query(F.collection(db, 'game_sessions'), F.where('user_id', '==', userId)));
+  return snap.data().count;
+}}
+
+// Deletes the player's sessions + their guesses, then either resets the
+// profile's game counters (so they can play again) or deletes the profile.
+async function deletePlayerData(userId, deleteProfile) {{
+  const {{ db, F }} = fb;
+  const sessions = await F.getDocs(F.query(F.collection(db, 'game_sessions'), F.where('user_id', '==', userId)));
+  const refs = [];
+  for (const s of sessions.docs) {{
+    const guesses = await F.getDocs(F.query(F.collection(db, 'game_guesses'), F.where('session_id', '==', s.id)));
+    guesses.forEach(g => refs.push(g.ref));
+    refs.push(s.ref);
+  }}
+  for (let i = 0; i < refs.length; i += 450) {{
+    const batch = F.writeBatch(db);
+    refs.slice(i, i + 450).forEach(r => batch.delete(r));
+    await batch.commit();
+  }}
+  const profileRef = F.doc(db, 'profiles', userId);
+  if (deleteProfile) {{
+    await F.deleteDoc(profileRef);
+  }} else if ((await F.getDoc(profileRef)).exists()) {{
+    await F.updateDoc(profileRef, {{ game_count: 0 }});
+  }}
 }}
 
 // ── Delete Games ──────────────────────────────────────────
@@ -776,9 +852,8 @@ async function deleteGames(userId, trailName) {{
     icon: '🗑️',
     title: 'Delete Games?',
     titleColor: 'var(--amber)',
-    body: `Delete <strong>${{n}} game session(s)</strong> for <strong>"${{trailName}}"</strong>.<br><br>
+    body: `Delete <strong>${{n}} game session(s)</strong> for <strong>"${{esc(trailName)}}"</strong>.<br><br>
            Their <strong>profile and login account are kept</strong> — only their game history will be removed.<br><br>
-           <span class="warn-text">⚠ Photo stats will not be recalculated automatically.</span><br><br>
            <span class="warn-text">This cannot be undone.</span>`,
     btnLabel:    'Yes, Delete Games',
     btnColor:    'var(--amber)',
@@ -791,7 +866,8 @@ async function doDeleteGames(userId, trailName) {{
   const row = document.getElementById('player-row-' + userId);
   if (row) row.querySelectorAll('button').forEach(b => {{ b.disabled = true; b.textContent = 'Deleting…'; }});
 
-  const {{ error }} = await sb.rpc('admin_delete_player_games', {{ target_user_id: userId }});
+  let error = null;
+  try {{ await deletePlayerData(userId, false); }} catch (err) {{ error = err; console.error(err); }}
   if (error) {{
     alert('Error: ' + error.message);
     if (row) row.querySelectorAll('button').forEach((b, i) => {{
@@ -813,10 +889,10 @@ async function deletePlayer(userId, trailName) {{
     icon: '⛔',
     title: 'Delete Player?',
     titleColor: 'var(--red)',
-    body: `Permanently delete player <strong>"${{trailName}}"</strong> and their <strong>${{n}} game(s)</strong>.<br><br>
+    body: `Permanently delete player <strong>"${{esc(trailName)}}"</strong> and their <strong>${{n}} game(s)</strong>.<br><br>
            Their <span class="danger-text">profile and all game data will be permanently removed</span>.<br><br>
-           <span class="warn-text">⚠ Their Google auth account will remain.</span>
-           Go to <strong>Supabase → Authentication → Users</strong> and delete it there too to prevent re-signup.<br><br>
+           <span class="warn-text">⚠ Their Google sign-in account will remain.</span>
+           Go to <strong>Firebase console → Authentication → Users</strong> and delete it there too to prevent re-signup.<br><br>
            <span class="danger-text">This cannot be undone.</span>`,
     btnLabel: 'Yes, Delete Player',
     btnColor: 'var(--red)',
@@ -828,7 +904,8 @@ async function doDeletePlayer(userId, trailName) {{
   const row = document.getElementById('player-row-' + userId);
   if (row) row.querySelectorAll('button').forEach(b => {{ b.disabled = true; b.textContent = 'Deleting…'; }});
 
-  const {{ error }} = await sb.rpc('admin_delete_player', {{ target_user_id: userId }});
+  let error = null;
+  try {{ await deletePlayerData(userId, true); }} catch (err) {{ error = err; console.error(err); }}
   if (error) {{
     alert('Error: ' + error.message);
     if (row) row.querySelectorAll('button').forEach((b, i) => {{
@@ -893,10 +970,17 @@ async function saveEditedName(userId) {{
 
   if (actionsEl) actionsEl.style.opacity = '.5';
 
-  const {{ error }} = await sb.rpc('admin_update_player_name', {{
-    target_user_id: userId,
-    new_name:       newName,
-  }});
+  if (newName.length > 60) {{
+    if (actionsEl) actionsEl.style.opacity = '1';
+    alert('Name must be 60 characters or fewer.');
+    return;
+  }}
+  let error = null;
+  try {{
+    await fb.F.updateDoc(fb.F.doc(fb.db, 'profiles', userId), {{ trail_name: newName }});
+  }} catch (err) {{
+    error = err;
+  }}
 
   if (actionsEl) actionsEl.style.opacity = '1';
 

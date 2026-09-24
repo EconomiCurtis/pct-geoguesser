@@ -2,11 +2,13 @@
 # build.py  —  PCT GeoGuesser  (hiker profile page)
 #
 # Generates a single self-contained index.html deployed at /hiker/.
-# The page reads ?id=<uuid> from the URL, fetches the player's profile
-# and game history from Supabase, and displays their stats.
+# The page reads ?id=<uid> from the URL, fetches the player's profile
+# (Firestore profiles/{uid}) and game history (game_sessions), and displays
+# their stats.
 #
-# URL format: https://pct-geoguesser.economicurtis.com/hiker/?id=<full-uuid>
-# The leaderboard links to this page using the full Supabase profile UUID.
+# URL format: https://pct-geoguesser.economicurtis.com/hiker/?id=<uid>
+# The uid is the Firebase Auth uid (players migrated from Supabase kept their
+# Supabase UUID as their uid, so old links still work).
 #
 # To rebuild:
 #   python3 app-hiker/build.py
@@ -18,7 +20,7 @@
 
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'misc'))
-from supabase_config import SUPABASE_URL, SUPABASE_ANON_KEY
+from firebase_config import FIREBASE_SDK_BASE, FIREBASE_CONFIG_JS, FONT_PREF_SCRIPT
 
 HERE     = os.path.dirname(os.path.abspath(__file__))
 OUT_PATH = os.path.join(HERE, "index.html")
@@ -47,7 +49,6 @@ html = f"""<!DOCTYPE html>
 <link rel="icon"             type="image/png" href="{MISC_BASE_URL}/pct-geoguesser-favicon.png">
 <link rel="apple-touch-icon"                  href="{MISC_BASE_URL}/pct-geoguesser-favicon.png">
 <meta name="theme-color" content="#0d1117">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
 
@@ -330,33 +331,7 @@ body {{
   .games-table td {{ padding: 12px 16px; }}
 }}
 </style>
-<script>
-/* ── Font preference ────────────────────────────────────────────────────────
-   Applies the site's primary_font setting from Supabase site_settings.
-   localStorage key 'pct_font' is read synchronously so the correct font
-   is set before first paint (no flash). A background fetch then updates
-   the cache if the setting has changed in the admin panel.
-   Values: 'futura' (default) | 'open-sans'  ── */
-(function() {{
-  var STACKS = {{
-    'futura':    "'Futura', 'Futura PT', 'Open Sans', Arial, sans-serif",
-    'open-sans': "'Open Sans', Arial, sans-serif"
-  }};
-  var cached = localStorage.getItem('pct_font');
-  if (cached && STACKS[cached]) {{
-    document.documentElement.style.setProperty('--font-primary', STACKS[cached]);
-  }}
-  fetch('{SUPABASE_URL}/rest/v1/site_settings?select=key,value&key=eq.primary_font', {{
-    headers: {{ 'apikey': '{SUPABASE_ANON_KEY}', 'Authorization': 'Bearer {SUPABASE_ANON_KEY}' }}
-  }}).then(function(r) {{ return r.json(); }}).then(function(rows) {{
-    if (!rows || !rows.length) return;
-    var val = rows[0].value;
-    if (!STACKS[val]) return;
-    localStorage.setItem('pct_font', val);
-    document.documentElement.style.setProperty('--font-primary', STACKS[val]);
-  }}).catch(function() {{}});
-}})();
-</script>
+{FONT_PREF_SCRIPT}
 </head>
 <body>
 
@@ -429,8 +404,11 @@ body {{
 
 </div>
 
-<script>
-const sb = supabase.createClient('{SUPABASE_URL}', '{SUPABASE_ANON_KEY}');
+<script type="module">
+import {{ initializeApp }} from '{FIREBASE_SDK_BASE}/firebase-app.js';
+import {{ getFirestore, collection, query, where, orderBy, limit, getDocs, getDoc, doc }} from '{FIREBASE_SDK_BASE}/firebase-firestore.js';
+
+const db = getFirestore(initializeApp({FIREBASE_CONFIG_JS}));
 
 function showState(id) {{
   ['state-loading','state-notfound','state-error','profile-content']
@@ -474,36 +452,28 @@ async function load() {{
   if (!userId) {{ showState('state-notfound'); return; }}
 
   try {{
-    const ago90str = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+    const ago90 = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const sessions = collection(db, 'game_sessions');
+    const byScore  = (a, b) => b.total_score - a.total_score;
 
-    // Fetch profile, games, and leaderboard data in parallel
-    const [profileRes, gamesRes, lb90Res, lbAllRes] = await Promise.all([
-      sb.from('profiles')
-        .select('id, trail_name, pct_year, about')
-        .eq('id', userId)
-        .maybeSingle(),
-      sb.from('game_sessions')
-        .select('id, total_score, perfect_count, photo_count, played_at')
-        .eq('user_id', userId)
-        .order('total_score', {{ ascending: false }}),
-      // 90-day leaderboard for ranking
-      sb.from('game_sessions')
-        .select('user_id, total_score')
-        .gte('played_at', ago90str)
-        .order('total_score', {{ ascending: false }})
-        .limit(500),
-      // All-time leaderboard for ranking
-      sb.from('game_sessions')
-        .select('user_id, total_score')
-        .order('total_score', {{ ascending: false }})
-        .limit(500),
+    // Fetch profile, games, and leaderboard data in parallel.
+    // Sorting is done here to avoid needing composite Firestore indexes.
+    const [profileSnap, gamesSnap, lb90Snap, lbAllSnap] = await Promise.all([
+      getDoc(doc(db, 'profiles', userId)),
+      getDocs(query(sessions, where('user_id', '==', userId))),
+      getDocs(query(sessions, where('played_at', '>=', ago90))),
+      getDocs(query(sessions, orderBy('total_score', 'desc'), limit(500))),
     ]);
 
-    if (profileRes.error) throw profileRes.error;
-    if (!profileRes.data) {{ showState('state-notfound'); return; }}
+    if (!profileSnap.exists()) {{ showState('state-notfound'); return; }}
 
-    const profile = profileRes.data;
-    const games   = gamesRes.data || [];
+    const profile = {{ id: userId, ...profileSnap.data() }};
+    const games   = gamesSnap.docs.map(d => {{
+      const g = d.data();
+      return {{ ...g, played_at: g.played_at.toDate() }};
+    }}).sort(byScore);
+    const lb90Res  = {{ data: lb90Snap.docs.map(d => d.data()).sort(byScore) }};
+    const lbAllRes = {{ data: lbAllSnap.docs.map(d => d.data()) }};
 
     // Deduplicate leaderboard rows (best per user, first = best since sorted desc)
     function dedup(rows) {{
@@ -523,7 +493,8 @@ async function load() {{
     showState('profile-content');
 
   }} catch (err) {{
-    document.getElementById('error-msg').textContent = err.message || 'Failed to load profile.';
+    console.error('Profile load failed:', err);
+    document.getElementById('error-msg').textContent = 'Failed to load profile — try again in a minute.';
     showState('state-error');
   }}
 }}

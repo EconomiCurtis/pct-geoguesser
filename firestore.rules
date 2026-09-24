@@ -1,0 +1,128 @@
+rules_version = '2';
+
+// PCT GeoGuesser — Firestore access rules (replaces the Supabase RLS policies).
+// Deploy: npx firebase-tools deploy --only firestore:rules
+//
+// Everything is publicly readable (leaderboard, hiker pages, stats).
+//
+// Saving a scored game is one batched write from the game page:
+//   profiles/{uid}          game_count + 1, last_game_at = now, last_session_id
+//   game_sessions/{sid}     the game (played_at = now)
+//   game_guesses/{sid}_{i}  one per photo (i = 0..9)
+// The profile update carries the rate limit (1 per minute) and the 15-game cap;
+// the session and guesses are only accepted inside that same write.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Keep in sync with ADMIN_EMAIL in app-admin/build.py
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email == 'curtisesjunk@gmail.com'
+        && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function profilePath(uid) {
+      return /databases/$(database)/documents/profiles/$(uid);
+    }
+
+    // ── profiles ──────────────────────────────────────────────────────────
+    function validProfile(d) {
+      return d.keys().hasOnly(['trail_name', 'pct_year', 'about', 'created_at',
+                               'game_count', 'last_game_at', 'last_session_id'])
+        && d.trail_name is string && d.trail_name.size() > 0 && d.trail_name.size() <= 60
+        && d.pct_year   is string && d.pct_year.size()   > 0 && d.pct_year.size()   <= 40
+        && (d.get('about', null) == null
+            || (d.about is string && d.about.size() <= 1000));
+    }
+
+    function unchanged(field, fallback) {
+      return request.resource.data.get(field, fallback) == resource.data.get(field, fallback);
+    }
+
+    function isProfileEdit() {
+      return unchanged('game_count', 0) && unchanged('last_game_at', null)
+        && unchanged('last_session_id', null);
+    }
+
+    function isGameSubmission() {
+      let d    = request.resource.data;
+      let prev = resource.data.get('last_game_at', null);
+      return unchanged('trail_name', null) && unchanged('pct_year', null) && unchanged('about', null)
+        && resource.data.get('game_count', 0) < 15
+        && d.game_count == resource.data.get('game_count', 0) + 1
+        && d.last_game_at == request.time
+        && (prev == null || request.time > prev + duration.value(60, 's'))
+        && d.last_session_id is string;
+    }
+
+    match /profiles/{uid} {
+      allow read: if true;
+      allow create: if isOwner(uid)
+        && validProfile(request.resource.data)
+        && request.resource.data.created_at == request.time
+        && request.resource.data.keys().hasOnly(['trail_name', 'pct_year', 'about', 'created_at']);
+      allow update: if validProfile(request.resource.data)
+        && unchanged('created_at', null)
+        && ((isOwner(uid) && (isProfileEdit() || isGameSubmission())) || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // ── game_sessions ─────────────────────────────────────────────────────
+    function validSession(d) {
+      return d.keys().hasOnly(['user_id', 'total_score', 'perfect_count', 'photo_count', 'played_at'])
+        && d.total_score is number && d.total_score >= 0 && d.total_score <= 2680
+        && d.photo_count is int && d.photo_count >= 1 && d.photo_count <= 20
+        && d.perfect_count is int && d.perfect_count >= 0 && d.perfect_count <= d.photo_count;
+    }
+
+    match /game_sessions/{sid} {
+      allow read: if true;
+      // sid must be a Firestore auto-ID (it is embedded in guess-id patterns)
+      allow create: if request.auth != null
+        && sid.matches('[A-Za-z0-9]{20}')
+        && validSession(request.resource.data)
+        && request.resource.data.user_id == request.auth.uid
+        && request.resource.data.played_at == request.time
+        && getAfter(profilePath(request.auth.uid)).data.last_session_id == sid
+        && getAfter(profilePath(request.auth.uid)).data.last_game_at == request.time;
+      allow delete: if isAdmin();
+    }
+
+    // ── game_guesses ──────────────────────────────────────────────────────
+    function validGuess(d) {
+      return d.keys().hasOnly(['session_id', 'photo_id', 'true_mile', 'guessed_mile', 'score', 'timed_out'])
+        && d.session_id is string && d.session_id.matches('[A-Za-z0-9]{20}')
+        && d.photo_id is string && d.photo_id.size() <= 16
+        && d.true_mile is number
+        && (d.guessed_mile == null || d.guessed_mile is number)
+        && d.score is number && d.score >= 0 && d.score <= 266
+        && d.timed_out is bool;
+    }
+
+    match /game_guesses/{gid} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && validGuess(request.resource.data)
+        && gid.matches(request.resource.data.session_id + '_[0-9]')
+        && getAfter(/databases/$(database)/documents/game_sessions/$(request.resource.data.session_id)).data.user_id == request.auth.uid
+        && getAfter(/databases/$(database)/documents/game_sessions/$(request.resource.data.session_id)).data.played_at == request.time;
+      allow delete: if isAdmin();
+    }
+
+    // Legacy per-photo aggregates imported from Supabase. Admin stats are now
+    // computed from game_guesses; nothing writes here.
+    match /photo_stats/{photoId} {
+      allow read: if true;
+    }
+
+    match /site_settings/{key} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

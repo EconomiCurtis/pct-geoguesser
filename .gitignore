@@ -46,6 +46,10 @@ misc/halfmiles_pct_notes_gps and miles.xlsx
 
 # ── Local-only tools ──────────────────────────────────────────────────────────
 app-explore/
+# Claude Code local settings (preview launch config, permissions)
+.claude/
+# Design scratch files (Venn diagram drafts)
+other/
 
 # ── Generated HTML build artifacts ───────────────────────────────────────────
 # Regenerated locally by each app-*/build.py, then deployed via wrangler.
@@ -56,3 +60,15 @@ app-leaderboard/index.html
 app-leaderboard/all-time/
 app-hiker/index.html
 app-admin/index.html
+.claude/launch.json
+other/pct-ven.jpeg
+other/pct-ven.png
+other/pct-ven.xcf
+other/pct-venn-futura.html
+other/pct-venn-jost.html
+.claude/launch.json
+other/pct-ven.jpeg
+other/pct-ven.png
+other/pct-ven.xcf
+other/pct-venn-futura.html
+other/pct-venn-jost.html

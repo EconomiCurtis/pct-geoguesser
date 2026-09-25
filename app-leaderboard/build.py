@@ -4,15 +4,18 @@
 # Generates a single leaderboard page:
 #   app-leaderboard/index.html  →  deployed at /leaderboard/
 #
-# Data: Firestore collections `game_sessions` (scores), `profiles/{uid}`
-#   (trail_name, pct_year) and `site_settings/{key}` ({value}).
+# Data (Firestore REST API, no SDK): `profiles/{uid}` (trail_name, pct_year,
+#   best_score, best_perfects), `game_sessions` (90-day tab only) and
+#   `site_settings/{key}` ({value}).
 #
-# Default view: All-Time (highest score per player, ever).
+# Default view: All-Time — one query: profiles ordered by best_score.
+# The last result is cached in localStorage and drawn instantly on the next
+#   visit, then replaced by fresh data.
 # 90-Day tab: shown only when site_settings/show_rolling_leaderboard.value is
 #   'true'. Otherwise only All-Time is shown, with no tab bar.
 #
-# Row highlighting: the Firebase Auth uid of the signed-in player (if any)
-#   matches game_sessions.user_id; that row gets .lb-row-me.
+# Row highlighting: the signed-in player's uid (localStorage `pct_uid`, set by
+#   the game page) matches the profile id; that row gets .lb-row-me.
 #
 # To rebuild:
 #   python3 app-leaderboard/build.py
@@ -24,7 +27,7 @@
 import os
 sys = __import__('sys')
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'misc'))
-from firebase_config import FIREBASE_SDK_BASE, FIREBASE_CONFIG_JS, FONT_PREF_SCRIPT
+from firebase_config import FIRESTORE_REST, FIRESTORE_REST_KEY, FONT_PREF_SCRIPT
 
 HERE         = os.path.dirname(os.path.abspath(__file__))
 MISC_BASE_URL = "https://pct-geoguesser.economicurtis.com/misc"
@@ -283,19 +286,17 @@ body {{
   </table>
 </div>
 
-<script type="module">
-import {{ initializeApp }} from '{FIREBASE_SDK_BASE}/firebase-app.js';
-import {{ getAuth, onAuthStateChanged }} from '{FIREBASE_SDK_BASE}/firebase-auth.js';
-import {{ getFirestore, collection, query, where, orderBy, limit, getDocs, getDoc, doc }} from '{FIREBASE_SDK_BASE}/firebase-firestore.js';
-
-const app  = initializeApp({FIREBASE_CONFIG_JS});
-const auth = getAuth(app);
-const db   = getFirestore(app);
+<script>
+// Plain Firestore REST calls (no Firebase SDK): the SDK is ~245 KB and opens
+// a live connection, which made first visits on phones take many seconds.
+const REST = '{FIRESTORE_REST}';
+const KEY  = '{FIRESTORE_REST_KEY}';
+const DOC_PREFIX = REST.replace('https://firestore.googleapis.com/v1/', '');
 const MEDALS = ['🥇','🥈','🥉'];
 
 // Current view: 'alltime' (default) or 'rolling'
 let currentView = 'alltime';
-// Logged-in user's ID — set in init(); null if not signed in
+// Signed-in player's uid (for row highlighting); null if unknown
 let currentUserId = null;
 
 // trail_name / pct_year are player-entered, so escape before innerHTML
@@ -303,9 +304,199 @@ function esc(s) {{
   return String(s).replace(/[&<>"']/g, c => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}})[c]);
 }}
 
+// localStorage can be missing or throw (private mode); it's only a speed-up
+function cacheGet(key) {{
+  try {{ return JSON.parse(localStorage.getItem(key)); }} catch (_) {{ return null; }}
+}}
+function cacheSet(key, value) {{
+  try {{ localStorage.setItem(key, JSON.stringify(value)); }} catch (_) {{}}
+}}
+
+// Firestore REST returns typed values; whole numbers come back as integerValue
+function plain(v) {{
+  if (!v) return null;
+  if ('stringValue'  in v) return v.stringValue;
+  if ('doubleValue'  in v) return v.doubleValue;
+  if ('integerValue' in v) return Number(v.integerValue);
+  return null;
+}}
+function docData(d) {{
+  const out = {{ id: d.name.split('/').pop() }};
+  for (const [k, v] of Object.entries(d.fields || {{}})) out[k] = plain(v);
+  return out;
+}}
+
+async function post(method, body) {{
+  const res = await fetch(`${{REST}}:${{method}}?key=${{KEY}}`, {{
+    method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify(body),
+  }});
+  if (!res.ok) throw new Error(`${{method}} failed: ${{res.status}}`);
+  return res.json();
+}}
+const fieldList = names => ({{ fields: names.map(n => ({{ fieldPath: n }})) }});
+
+// All-time: each profile carries its best game (kept up to date by the game
+// page and checked by firestore.rules), so this is a single query.
+async function fetchAllTime() {{
+  const res = await post('runQuery', {{ structuredQuery: {{
+    from:    [{{ collectionId: 'profiles' }}],
+    select:  fieldList(['trail_name', 'pct_year', 'best_score', 'best_perfects']),
+    orderBy: [{{ field: {{ fieldPath: 'best_score' }}, direction: 'DESCENDING' }}],
+    limit:   100,
+  }} }});
+  return res.filter(r => r.document).map(r => docData(r.document)).map(p => ({{
+    user_id: p.id, name: p.trail_name, year: p.pct_year, score: p.best_score, perfects: p.best_perfects ?? 0,
+  }}));
+}}
+
+// 90-day: best game per player among recent sessions, then their names
+async function fetchRolling() {{
+  const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+  const res = await post('runQuery', {{ structuredQuery: {{
+    from:   [{{ collectionId: 'game_sessions' }}],
+    select: fieldList(['user_id', 'total_score', 'perfect_count']),
+    where:  {{ fieldFilter: {{ field: {{ fieldPath: 'played_at' }}, op: 'GREATER_THAN_OR_EQUAL', value: {{ timestampValue: cutoff }} }} }},
+  }} }});
+  const sessions = res.filter(r => r.document).map(r => docData(r.document))
+    .sort((a, b) => b.total_score - a.total_score);
+  const seen = new Set();
+  const best = [];
+  for (const s of sessions) {{
+    if (seen.has(s.user_id)) continue;
+    seen.add(s.user_id);
+    best.push(s);
+    if (best.length >= 100) break;
+  }}
+  if (!best.length) return [];
+  const got = await post('batchGet', {{
+    documents: best.map(s => `${{DOC_PREFIX}}/profiles/${{s.user_id}}`),
+    mask: {{ fieldPaths: ['trail_name', 'pct_year'] }},
+  }});
+  const profiles = {{}};
+  got.filter(r => r.found).forEach(r => {{ const p = docData(r.found); profiles[p.id] = p; }});
+  return best.filter(s => profiles[s.user_id]).map(s => ({{
+    user_id: s.user_id, name: profiles[s.user_id].trail_name, year: profiles[s.user_id].pct_year,
+    score: s.total_score, perfects: s.perfect_count ?? 0,
+  }}));
+}}
+
 function showState(id) {{
   ['state-loading','state-empty','state-error','lb-table']
     .forEach(s => document.getElementById(s).hidden = (s !== id));
+}}
+
+function render(rows) {{
+  if (rows.length === 0) {{ showState('state-empty'); return; }}
+  document.getElementById('window-note').textContent = currentView === 'rolling'
+    ? 'Highest score per player in the last 90 days · max 2655.8 pts'
+    : 'Highest score per player, all time · max 2655.8 pts';
+
+  const tbody = document.getElementById('lb-body');
+  tbody.innerHTML = '';
+  rows.forEach((row, i) => {{
+    const rank      = i + 1;
+    const profileId = encodeURIComponent(row.user_id);
+    const name      = esc(row.name || 'Anonymous');
+    const pctYear   = esc(row.year || '');
+    const score     = Number(row.score).toFixed(1);
+    const perfects  = row.perfects;
+    const allPerf   = perfects === 10;
+
+    const rankHtml = rank <= 3
+      ? `<span class="rank-medal">${{MEDALS[rank-1]}}</span>`
+      : `${{rank}}`;
+    const yearHtml = pctYear
+      ? `<span class="pct-year">PCT ${{pctYear}}</span>`
+      : '';
+
+    const tr = document.createElement('tr');
+    tr.dataset.uid = row.user_id;
+    tr.innerHTML = `
+      <td class="rank-cell">${{rankHtml}}</td>
+      <td class="name-cell">
+        <a href="/hiker/?id=${{profileId}}" class="hiker-link">${{name}}</a>
+        ${{yearHtml}}
+      </td>
+      <td class="score-cell">${{score}} pts</td>
+      <td class="perf-cell${{allPerf ? ' all-perfect' : ''}}">${{perfects}}/10</td>
+    `;
+    tbody.appendChild(tr);
+  }});
+  highlightMe();
+  showState('lb-table');
+}}
+
+// Highlight the current player's own row
+function highlightMe() {{
+  if (!currentUserId) return;
+  document.querySelectorAll('#lb-body tr').forEach(tr =>
+    tr.classList.toggle('lb-row-me', tr.dataset.uid === currentUserId));
+}}
+
+// Draw the last copy this browser saw straight away, then swap in fresh data
+async function loadScores() {{
+  const view = currentView;
+  const cacheKey = `pct_lb_${{view}}`;
+  const cached = cacheGet(cacheKey);
+  if (cached) render(cached);
+  else showState('state-loading');
+  try {{
+    const rows = await (view === 'rolling' ? fetchRolling() : fetchAllTime());
+    cacheSet(cacheKey, rows);
+    if (view === currentView) render(rows);
+  }} catch (err) {{
+    // Keep showing the cached copy if there is one; the error detail isn't
+    // meaningful to players, so it only goes to the console.
+    console.error('Leaderboard load failed:', err);
+    if (!cached && view === currentView) showState('state-error');
+  }}
+}}
+
+function applyRollingSetting(enabled) {{
+  document.getElementById('tab-bar').style.display = enabled ? '' : 'none';
+  document.getElementById('lb-title').textContent = enabled ? 'All-Time Leaderboard' : 'Leaderboard';
+}}
+
+async function loadRollingSetting() {{
+  try {{
+    const res = await fetch(`${{REST}}/site_settings/show_rolling_leaderboard?key=${{KEY}}`);
+    const enabled = res.ok && plain((await res.json()).fields?.value) === 'true';
+    cacheSet('pct_lb_rolling_on', enabled);
+    applyRollingSetting(enabled);
+  }} catch (_) {{}}
+}}
+
+// The game page stores the uid in localStorage on sign-in. Players who signed
+// in before that existed: read it from Firebase Auth's own IndexedDB record.
+function readFirebaseUid() {{
+  return new Promise(resolve => {{
+    try {{
+      const req = indexedDB.open('firebaseLocalStorageDb');
+      req.onupgradeneeded = () => req.transaction.abort();  // not signed in here; don't create the DB
+      req.onerror = () => resolve(null);
+      req.onsuccess = () => {{
+        const idb = req.result;
+        try {{
+          const all = idb.transaction('firebaseLocalStorage').objectStore('firebaseLocalStorage').getAll();
+          all.onsuccess = () => {{
+            const hit = all.result.find(r => String(r.fbase_key).startsWith('firebase:authUser:'));
+            resolve(hit?.value?.uid ?? null);
+            idb.close();
+          }};
+          all.onerror = () => {{ resolve(null); idb.close(); }};
+        }} catch (_) {{ resolve(null); idb.close(); }}
+      }};
+    }} catch (_) {{ resolve(null); }}
+  }});
+}}
+
+async function findMe() {{
+  try {{ currentUserId = localStorage.getItem('pct_uid'); }} catch (_) {{}}
+  if (!currentUserId) {{
+    currentUserId = await readFirebaseUid();
+    if (currentUserId) try {{ localStorage.setItem('pct_uid', currentUserId); }} catch (_) {{}}
+  }}
+  highlightMe();
 }}
 
 function switchView(view) {{
@@ -315,125 +506,13 @@ function switchView(view) {{
   loadScores();
 }}
 
-// Returns sessions sorted by total_score DESC
-async function fetchSessions() {{
-  const sessions = collection(db, 'game_sessions');
-  if (currentView === 'rolling') {{
-    // Firestore can't order by a different field than the range filter, so sort here
-    const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
-    const snap = await getDocs(query(sessions, where('played_at', '>=', cutoff)));
-    return snap.docs.map(d => d.data()).sort((a, b) => b.total_score - a.total_score);
-  }}
-  const snap = await getDocs(query(sessions, orderBy('total_score', 'desc'), limit(500)));
-  return snap.docs.map(d => d.data());
-}}
-
-async function loadScores() {{
-  showState('state-loading');
-  try {{
-    const sessions = await fetchSessions();
-
-    // Keep only the best score per user (already sorted DESC, first hit = best)
-    const seen = new Set();
-    const best = [];
-    for (const s of sessions) {{
-      if (seen.has(s.user_id)) continue;
-      seen.add(s.user_id);
-      best.push(s);
-      if (best.length >= 100) break;
-    }}
-
-    const profileSnaps = await Promise.all(best.map(s => getDoc(doc(db, 'profiles', s.user_id))));
-    const rows = [];
-    best.forEach((s, i) => {{
-      if (profileSnaps[i].exists()) rows.push({{ ...s, profile: profileSnaps[i].data() }});
-    }});
-
-    if (rows.length === 0) {{ showState('state-empty'); return; }}
-
-    document.getElementById('window-note').textContent = currentView === 'rolling'
-      ? 'Highest score per player in the last 90 days · max 2655.8 pts'
-      : 'Highest score per player, all time · max 2655.8 pts';
-
-    const tbody = document.getElementById('lb-body');
-    tbody.innerHTML = '';
-    rows.forEach((row, i) => {{
-      const rank      = i + 1;
-      const profileId = encodeURIComponent(row.user_id);
-      const name      = esc(row.profile.trail_name || 'Anonymous');
-      const pctYear   = esc(row.profile.pct_year   || '');
-      const score     = Number(row.total_score).toFixed(1);
-      const perfects  = row.perfect_count ?? 0;
-      const total     = row.photo_count   ?? 10;
-      const allPerf   = perfects === total;
-
-      const rankHtml = rank <= 3
-        ? `<span class="rank-medal">${{MEDALS[rank-1]}}</span>`
-        : `${{rank}}`;
-      const yearHtml = pctYear
-        ? `<span class="pct-year">PCT ${{pctYear}}</span>`
-        : '';
-
-      const tr = document.createElement('tr');
-      // Highlight the current player's own row
-      if (currentUserId && row.user_id === currentUserId) {{
-        tr.classList.add('lb-row-me');
-      }}
-      tr.innerHTML = `
-        <td class="rank-cell">${{rankHtml}}</td>
-        <td class="name-cell">
-          <a href="/hiker/?id=${{profileId}}" class="hiker-link">${{name}}</a>
-          ${{yearHtml}}
-        </td>
-        <td class="score-cell">${{score}} pts</td>
-        <td class="perf-cell${{allPerf ? ' all-perfect' : ''}}">${{perfects}}/${{total}}</td>
-      `;
-      tbody.appendChild(tr);
-    }});
-
-    showState('lb-table');
-  }} catch (err) {{
-    // Firestore errors (offline, permission-denied) aren't meaningful to
-    // players; keep the friendly default message and log the detail.
-    console.error('Leaderboard load failed:', err);
-    showState('state-error');
-  }}
-}}
-
-async function init() {{
-  document.getElementById('tab-alltime').addEventListener('click', () => switchView('alltime'));
-  document.getElementById('tab-rolling').addEventListener('click', () => switchView('rolling'));
-
-  // Identify the logged-in player (if any) so their row can be highlighted.
-  // The first onAuthStateChanged callback fires once the saved session is restored.
-  const userReady = new Promise(resolve => {{
-    const unsub = onAuthStateChanged(auth, user => {{
-      currentUserId = user ? user.uid : null;
-      unsub();
-      resolve();
-    }}, () => resolve());
-  }});
-
-  let rollingEnabled = false;
-  try {{
-    const snap = await getDoc(doc(db, 'site_settings', 'show_rolling_leaderboard'));
-    rollingEnabled = snap.exists() && snap.data().value === 'true';
-  }} catch (_) {{}}
-
-  if (rollingEnabled) {{
-    document.getElementById('tab-bar').style.display = '';
-    document.getElementById('lb-title').textContent = 'All-Time Leaderboard';
-    document.getElementById('tab-alltime').classList.add('tab-active');
-  }} else {{
-    document.getElementById('lb-title').textContent = 'Leaderboard';
-  }}
-
-  currentView = 'alltime';
-  await userReady;
-  loadScores();
-}}
-
-init();
+document.getElementById('tab-alltime').addEventListener('click', () => switchView('alltime'));
+document.getElementById('tab-rolling').addEventListener('click', () => switchView('rolling'));
+document.getElementById('tab-alltime').classList.add('tab-active');
+applyRollingSetting(cacheGet('pct_lb_rolling_on') === true);
+loadScores();
+loadRollingSetting();
+findMe();
 </script>
 </body>
 </html>"""

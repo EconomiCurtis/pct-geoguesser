@@ -7,6 +7,7 @@ rules_version = '2';
 //
 // Saving a scored game is one batched write from the game page:
 //   profiles/{uid}          game_count + 1, last_game_at = now, last_session_id
+//                           (+ best_* when the game beats the player's best)
 //   game_sessions/{sid}     the game (played_at = now)
 //   game_guesses/{sid}_{i}  one per photo (i = 0..9)
 // The profile update carries the rate limit (1 per minute) and the 15-game cap;
@@ -31,22 +32,48 @@ service cloud.firestore {
     }
 
     // ── profiles ──────────────────────────────────────────────────────────
+    // best_score / best_perfects / best_session_id copy the player's best game
+    // so the leaderboard is one query (profiles ordered by best_score).
     function validProfile(d) {
       return d.keys().hasOnly(['trail_name', 'pct_year', 'about', 'created_at',
-                               'game_count', 'last_game_at', 'last_session_id'])
+                               'game_count', 'last_game_at', 'last_session_id',
+                               'best_score', 'best_perfects', 'best_session_id'])
         && d.trail_name is string && d.trail_name.size() > 0 && d.trail_name.size() <= 60
         && d.pct_year   is string && d.pct_year.size()   > 0 && d.pct_year.size()   <= 40
         && (d.get('about', null) == null
-            || (d.about is string && d.about.size() <= 1000));
+            || (d.about is string && d.about.size() <= 1000))
+        && (d.get('best_score', null) == null
+            || (d.best_score is number && d.best_score >= 0 && d.best_score <= 2680))
+        && (d.get('best_perfects', null) == null
+            || (d.best_perfects is int && d.best_perfects >= 0 && d.best_perfects <= 20))
+        && (d.get('best_session_id', null) == null || d.best_session_id is string);
     }
 
     function unchanged(field, fallback) {
       return request.resource.data.get(field, fallback) == resource.data.get(field, fallback);
     }
 
+    function bestUnchanged() {
+      return unchanged('best_score', null) && unchanged('best_perfects', null)
+        && unchanged('best_session_id', null);
+    }
+
     function isProfileEdit() {
       return unchanged('game_count', 0) && unchanged('last_game_at', null)
-        && unchanged('last_session_id', null);
+        && unchanged('last_session_id', null) && bestUnchanged();
+    }
+
+    // The game saved in this same write must be the player's own new one; if
+    // it beats their best, the best_* fields must copy it, otherwise stay put.
+    function bestTracksGame(d) {
+      let s    = getAfter(/databases/$(database)/documents/game_sessions/$(d.last_session_id)).data;
+      let beat = s.total_score > resource.data.get('best_score', -1);
+      return s.user_id == request.auth.uid && s.played_at == request.time
+        && (beat
+            ? (d.get('best_score', null) == s.total_score
+               && d.get('best_perfects', null) == s.perfect_count
+               && d.get('best_session_id', null) == d.last_session_id)
+            : bestUnchanged());
     }
 
     function isGameSubmission() {
@@ -57,7 +84,8 @@ service cloud.firestore {
         && d.game_count == resource.data.get('game_count', 0) + 1
         && d.last_game_at == request.time
         && (prev == null || request.time > prev + duration.value(60, 's'))
-        && d.last_session_id is string;
+        && d.last_session_id is string
+        && bestTracksGame(d);
     }
 
     match /profiles/{uid} {

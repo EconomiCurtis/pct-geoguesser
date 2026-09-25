@@ -12,6 +12,7 @@ const {
 const {
   doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc,
   writeBatch, serverTimestamp, increment, Timestamp, setLogLevel,
+  query, orderBy, limit, deleteField,
 } = require('firebase/firestore');
 
 // Denied writes are the point of most tests; don't log each one.
@@ -31,12 +32,13 @@ const admin  = () =>
 
 const ago = ms => Timestamp.fromMillis(Date.now() - ms);
 
-async function seed({ gameCount = 0, lastGameAgoMs = null } = {}) {
+async function seed({ gameCount = 0, lastGameAgoMs = null, bestScore = null } = {}) {
   await env.withSecurityRulesDisabled(async ctx => {
     const db = ctx.firestore();
     const base = { trail_name: 'Tester', pct_year: '2025', about: null, created_at: ago(864e5) };
     const p1 = { ...base, game_count: gameCount };
     if (lastGameAgoMs !== null) p1.last_game_at = ago(lastGameAgoMs);
+    if (bestScore !== null) Object.assign(p1, { best_score: bestScore, best_perfects: 3, best_session_id: 'CCCCCCCCCCCCCCCCCCCC' });
     await setDoc(doc(db, 'profiles', PLAYER), p1);
     await setDoc(doc(db, 'profiles', OTHER), { ...base, trail_name: 'Other' });
     await setDoc(doc(db, 'game_sessions', 'AAAAAAAAAAAAAAAAAAAA'), {
@@ -51,23 +53,29 @@ async function seed({ gameCount = 0, lastGameAgoMs = null } = {}) {
 }
 
 // Mirrors submitGameScore() in app-game/build.py; opts override pieces to
-// build malicious variants.
+// build malicious variants. By default the game is treated as a new best
+// (opts.best = false leaves best_* alone; an object replaces them).
 function gameBatch(db, uid = PLAYER, opts = {}) {
   const batch = writeBatch(db);
   const sid = opts.sid ?? doc(collection(db, 'game_sessions')).id;
   const now = serverTimestamp();
+  const score = opts.score ?? 1200.5;
+  const perfect = opts.perfect ?? 2;
+  const best = opts.best === false ? {}
+    : opts.best ?? { best_score: score, best_perfects: perfect, best_session_id: sid };
   if (opts.profile !== false) {
     batch.update(doc(db, 'profiles', uid), {
       game_count: increment(opts.inc ?? 1),
       last_game_at: now,
       last_session_id: opts.lastSessionId ?? sid,
+      ...best,
       ...(opts.profileExtra ?? {}),
     });
   }
   batch.set(doc(db, 'game_sessions', sid), {
     user_id: opts.userId ?? uid,
-    total_score: opts.score ?? 1200.5,
-    perfect_count: opts.perfect ?? 2,
+    total_score: score,
+    perfect_count: perfect,
     photo_count: opts.count ?? 10,
     played_at: opts.playedAt ?? now,
     ...(opts.sessionExtra ?? {}),
@@ -226,9 +234,55 @@ describe('saving a scored game', () => {
     await assertFails(deleteDoc(doc(db, 'game_sessions', 'AAAAAAAAAAAAAAAAAAAA')));
     await assertFails(deleteDoc(doc(db, 'game_guesses', 'AAAAAAAAAAAAAAAAAAAA_0')));
   });
+  test('profile writes pointing at an old or foreign session are rejected', async () => {
+    const db = player();
+    await assertFails(updateDoc(doc(db, 'profiles', PLAYER), {
+      game_count: increment(1), last_game_at: serverTimestamp(), last_session_id: 'AAAAAAAAAAAAAAAAAAAA',
+      best_score: 900, best_perfects: 0, best_session_id: 'AAAAAAAAAAAAAAAAAAAA',
+    }));
+  });
   test('nobody can write legacy photo_stats', async () => {
     await assertFails(setDoc(doc(player(), 'photo_stats', 'abcde'), { appearances: 999 }));
     await assertFails(setDoc(doc(admin(), 'photo_stats', 'abcde'), { appearances: 999 }));
+  });
+});
+
+describe('best score (leaderboard)', () => {
+  test('a first game must be recorded as the best', async () => {
+    await assertFails(gameBatch(player(), PLAYER, { best: false }).batch.commit());
+    await assertSucceeds(gameBatch(player()).batch.commit());
+  });
+  test('beating the best must update it', async () => {
+    await env.clearFirestore(); await seed({ bestScore: 1000 });
+    await assertFails(gameBatch(player(), PLAYER, { score: 1500, best: false }).batch.commit());
+    await assertSucceeds(gameBatch(player(), PLAYER, { score: 1500 }).batch.commit());
+  });
+  test('a lower (or equal) score leaves the best alone', async () => {
+    await env.clearFirestore(); await seed({ bestScore: 2000 });
+    await assertFails(gameBatch(player(), PLAYER, { score: 1500 }).batch.commit());
+    await assertFails(gameBatch(player(), PLAYER, { score: 2000 }).batch.commit());
+    await assertSucceeds(gameBatch(player(), PLAYER, { score: 1500, best: false }).batch.commit());
+  });
+  test('the best must match the saved game exactly', async () => {
+    const inflated = sid => ({ best_score: 2600, best_perfects: 2, best_session_id: sid });
+    const db = player();
+    const sid = doc(collection(db, 'game_sessions')).id;
+    await assertFails(gameBatch(db, PLAYER, { sid, best: inflated(sid) }).batch.commit());
+    await assertFails(gameBatch(db, PLAYER, { sid, best: { best_score: 1200.5, best_perfects: 10, best_session_id: sid } }).batch.commit());
+    await assertFails(gameBatch(db, PLAYER, { sid, best: { best_score: 1200.5, best_perfects: 2, best_session_id: 'AAAAAAAAAAAAAAAAAAAA' } }).batch.commit());
+  });
+  test('players cannot set their best through a profile edit', async () => {
+    await assertFails(updateDoc(doc(player(), 'profiles', PLAYER), { best_score: 2600, best_perfects: 10, best_session_id: 'x' }));
+    await env.clearFirestore(); await seed({ bestScore: 1000 });
+    await assertFails(updateDoc(doc(player(), 'profiles', PLAYER), { best_score: 2600 }));
+    await assertFails(updateDoc(doc(player(), 'profiles', PLAYER), { best_score: deleteField() }));
+  });
+  test('anyone can read the leaderboard query; admin can recompute bests', async () => {
+    await env.clearFirestore(); await seed({ bestScore: 1000 });
+    await assertSucceeds(getDocs(query(collection(anon(), 'profiles'), orderBy('best_score', 'desc'), limit(100))));
+    await assertSucceeds(updateDoc(doc(admin(), 'profiles', PLAYER), { best_score: 900, best_perfects: 0, best_session_id: 'AAAAAAAAAAAAAAAAAAAA' }));
+    await assertSucceeds(updateDoc(doc(admin(), 'profiles', PLAYER), { best_score: deleteField(), best_perfects: deleteField(), best_session_id: deleteField() }));
+    await assertFails(updateDoc(doc(admin(), 'profiles', PLAYER), { best_score: 9999 }));
   });
 });
 

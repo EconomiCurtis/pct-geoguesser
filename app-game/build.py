@@ -542,6 +542,12 @@ let isEditingProfile = false;
 fbReady.then(({{ auth, A }}) => {{
   A.onAuthStateChanged(auth, async user => {{
     currentUser = user;
+    // Lets the leaderboard highlight this player's row without loading
+    // Firebase Auth (the uid is already public in /hiker/ links)
+    try {{
+      if (user) localStorage.setItem('pct_uid', user.uid);
+      else localStorage.removeItem('pct_uid');
+    }} catch (_) {{}}
     if (user) {{
       await loadProfile();
     }} else {{
@@ -705,6 +711,15 @@ async function submitGameScore() {{
 
   const {{ db, F }}  = fb;
   const MAX_GAMES  = 15;
+  const profileRef = F.doc(db, 'profiles', currentUser.uid);
+  // Re-read the profile: another tab or device may have saved a game since
+  // sign-in, and the best-score check below must compare against the latest.
+  try {{
+    const fresh = await F.getDoc(profileRef);
+    if (fresh.exists()) currentProfile = fresh.data();
+  }} catch (err) {{
+    console.error('Profile refresh failed:', err);
+  }}
   const gameCount  = currentProfile.game_count ?? 0;
   const lastGameMs = currentProfile.last_game_at ? currentProfile.last_game_at.toMillis() : 0;
   let failMsg = null;
@@ -717,10 +732,17 @@ async function submitGameScore() {{
       const now        = F.serverTimestamp();
       const sessionRef = F.doc(F.collection(db, 'game_sessions'));
       const batch      = F.writeBatch(db);
-      batch.update(F.doc(db, 'profiles', currentUser.uid), {{
+      // A new personal best is copied onto the profile, which is what the
+      // leaderboard reads (firestore.rules checks it matches this game)
+      const isBest = totalScore > (currentProfile.best_score ?? -1);
+      const best   = isBest
+        ? {{ best_score: totalScore, best_perfects: perfectCount, best_session_id: sessionRef.id }}
+        : {{}};
+      batch.update(profileRef, {{
         game_count:      F.increment(1),
         last_game_at:    now,
         last_session_id: sessionRef.id,
+        ...best,
       }});
       batch.set(sessionRef, {{
         user_id:       currentUser.uid,
@@ -736,6 +758,7 @@ async function submitGameScore() {{
       currentProfile.game_count      = gameCount + 1;
       currentProfile.last_game_at    = F.Timestamp.now();
       currentProfile.last_session_id = sessionRef.id;
+      Object.assign(currentProfile, best);
     }} catch (err) {{
       console.error('Score submit failed:', err);
       failMsg = 'Could not save your score. Please try again later.';

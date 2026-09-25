@@ -336,6 +336,14 @@ td.val-muted { color: var(--muted); }
             <span class="toggle-slider"></span>
           </label>
         </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:16px">
+          <div>
+            <div style="font-size:15px;font-weight:600">Recompute Best Scores</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:3px">The leaderboard reads each profile's best score. Games keep it current; run this after importing or editing game data by hand.</div>
+            <div id="recompute-status" style="font-size:12px;color:var(--muted);margin-top:6px;min-height:16px"></div>
+          </div>
+          <button class="sort-btn" id="btn-recompute" onclick="recomputeBestScores()" style="white-space:nowrap">Recompute</button>
+        </div>
       </div>
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px 24px;display:flex;flex-direction:column;gap:12px">
         <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--teal)">Typography</div>
@@ -778,8 +786,65 @@ async function deletePlayerData(userId, deleteProfile) {
   if (deleteProfile) {
     await F.deleteDoc(profileRef);
   } else if ((await F.getDoc(profileRef)).exists()) {
-    await F.updateDoc(profileRef, { game_count: 0 });
+    // No games left, so they also drop off the leaderboard
+    await F.updateDoc(profileRef, { game_count: 0, ...clearBest(F) });
   }
+}
+
+const clearBest = F => ({ best_score: F.deleteField(), best_perfects: F.deleteField(), best_session_id: F.deleteField() });
+
+// Rebuilds every profile's best_* fields from game_sessions (ties go to the
+// earlier game, matching the game page, which only replaces a strictly
+// higher score). Only profiles that differ are written.
+async function recomputeBestScores() {
+  const btn      = document.getElementById('btn-recompute');
+  const statusEl = document.getElementById('recompute-status');
+  btn.disabled = true;
+  statusEl.style.color = 'var(--muted)';
+  statusEl.textContent = 'Reading games…';
+  try {
+    const { db, F } = fb;
+    const [sessionsSnap, profilesSnap] = await Promise.all([
+      F.getDocs(F.collection(db, 'game_sessions')),
+      F.getDocs(F.collection(db, 'profiles')),
+    ]);
+    const best = {};
+    sessionsSnap.forEach(d => {
+      const s = d.data();
+      const b = best[s.user_id];
+      if (!b || s.total_score > b.best_score
+          || (s.total_score === b.best_score && s.played_at.toMillis() < b.at)) {
+        best[s.user_id] = { best_score: s.total_score, best_perfects: s.perfect_count, best_session_id: d.id, at: s.played_at.toMillis() };
+      }
+    });
+    const updates = [];
+    profilesSnap.forEach(d => {
+      const p = d.data();
+      const want = best[d.id];
+      if (want) {
+        if (p.best_score !== want.best_score || p.best_perfects !== want.best_perfects
+            || p.best_session_id !== want.best_session_id) {
+          updates.push([d.ref, { best_score: want.best_score, best_perfects: want.best_perfects, best_session_id: want.best_session_id }]);
+        }
+      } else if ('best_score' in p || 'best_perfects' in p || 'best_session_id' in p) {
+        updates.push([d.ref, clearBest(F)]);
+      }
+    });
+    for (let i = 0; i < updates.length; i += 450) {
+      const batch = F.writeBatch(db);
+      updates.slice(i, i + 450).forEach(([ref, data]) => batch.update(ref, data));
+      await batch.commit();
+    }
+    statusEl.style.color = 'var(--teal)';
+    statusEl.textContent = updates.length
+      ? `Updated ${updates.length} of ${profilesSnap.size} profiles ✓`
+      : `All ${profilesSnap.size} profiles already up to date ✓`;
+  } catch (err) {
+    console.error('Recompute failed:', err);
+    statusEl.style.color = 'var(--red)';
+    statusEl.textContent = 'Error: ' + err.message;
+  }
+  btn.disabled = false;
 }
 
 // ── Delete Games ──────────────────────────────────────────

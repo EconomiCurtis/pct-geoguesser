@@ -81,7 +81,7 @@ body {
   color: var(--pct-white);
 }
 
-/* Tab bar — hidden by default, shown only when 90-day is enabled */
+/* Tab bars: Official / Guests, then All-Time / 90-Day (only when enabled) */
 .tab-bar {
   display: flex;
   border: 1px solid var(--border);
@@ -107,6 +107,9 @@ body {
   color: var(--pct-white);
   cursor: default;
 }
+.tab-bar.tab-bar-sub { margin-top: -12px; }
+.tab-bar-sub .tab { padding: 7px 12px; font-size: 13px; }
+.tab-bar-sub .tab.tab-active { background: var(--surface2); color: var(--text); }
 
 .state-msg {
   text-align: center;
@@ -169,6 +172,8 @@ body {
   font-size: 15px;
 }
 .hiker-link:hover { text-decoration: underline; color: #5fd4d4; }
+/* Guests have no /hiker/ page, so their names aren't links */
+.guest-name { color: var(--text); font-weight: 700; font-size: 15px; }
 .pct-year {
   display: block;
   font-size: 12px;
@@ -236,8 +241,13 @@ body {
     <h1 id="lb-title">Leaderboard</h1>
   </div>
 
-  <!-- Tab bar: hidden until 90-day setting is confirmed enabled -->
-  <div class="tab-bar" id="tab-bar" style="display:none">
+  <div class="tab-bar" id="tier-bar">
+    <button class="tab" id="tab-official">Official</button>
+    <button class="tab" id="tab-guests">Guests</button>
+  </div>
+
+  <!-- Hidden until the 90-day setting is confirmed enabled -->
+  <div class="tab-bar tab-bar-sub" id="tab-bar" style="display:none">
     <button class="tab" id="tab-alltime">All-Time</button>
     <button class="tab" id="tab-rolling">90-Day</button>
   </div>
@@ -247,7 +257,7 @@ body {
   <div id="state-loading" class="state-msg">
     <div class="spinner"></div><br>Loading scores…
   </div>
-  <div id="state-empty" class="state-msg" hidden>No scores yet — be the first!</div>
+  <div id="state-empty" class="state-msg" hidden>No scores yet — <a id="empty-link" href="/game/" style="color:var(--pct-teal)">be the first!</a></div>
   <div id="state-error" class="state-msg" hidden>
     <div style="font-size:32px;margin-bottom:12px">⛺</div>
     <div id="error-msg" style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px">Leaderboard temporarily unavailable</div>
@@ -277,10 +287,18 @@ const KEY  = 'AIzaSyD8HreF5tpB1sC_8w09V5g1IV2-O95uG54';
 const DOC_PREFIX = REST.replace('https://firestore.googleapis.com/v1/', '');
 const MEDALS = ['🥇','🥈','🥉'];
 
-// Current view: 'alltime' (default) or 'rolling'
+// Boards: collections, the localStorage key the game page stores the player's
+// uid under, and Firebase Auth's app name (for the IndexedDB fallback)
+const TIERS = {
+  official: { profiles: 'profiles',       sessions: 'game_sessions',  uidKey: 'pct_uid',       app: '[DEFAULT]', play: '/game/'  },
+  guests:   { profiles: 'guest_profiles', sessions: 'guest_sessions', uidKey: 'pct_guest_uid', app: 'guest',     play: '/guest/' },
+};
+
+// Current board ('official' | 'guests') and view ('alltime' | 'rolling')
+let currentTier = new URLSearchParams(location.search).get('board') === 'guests' ? 'guests' : 'official';
 let currentView = 'alltime';
-// Signed-in player's uid (for row highlighting); null if unknown
-let currentUserId = null;
+// Signed-in player's uid per board (for row highlighting); null if unknown
+const myUid = { official: null, guests: null };
 
 // trail_name / pct_year are player-entered, so escape before innerHTML
 function esc(s) {
@@ -320,9 +338,9 @@ const fieldList = names => ({ fields: names.map(n => ({ fieldPath: n })) });
 
 // All-time: each profile carries its best game (kept up to date by the game
 // page and checked by firestore.rules), so this is a single query.
-async function fetchAllTime() {
+async function fetchAllTime(tier) {
   const res = await post('runQuery', { structuredQuery: {
-    from:    [{ collectionId: 'profiles' }],
+    from:    [{ collectionId: TIERS[tier].profiles }],
     select:  fieldList(['trail_name', 'pct_year', 'best_score', 'best_perfects']),
     orderBy: [{ field: { fieldPath: 'best_score' }, direction: 'DESCENDING' }],
     limit:   100,
@@ -333,10 +351,10 @@ async function fetchAllTime() {
 }
 
 // 90-day: best game per player among recent sessions, then their names
-async function fetchRolling() {
+async function fetchRolling(tier) {
   const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
   const res = await post('runQuery', { structuredQuery: {
-    from:   [{ collectionId: 'game_sessions' }],
+    from:   [{ collectionId: TIERS[tier].sessions }],
     select: fieldList(['user_id', 'total_score', 'perfect_count']),
     where:  { fieldFilter: { field: { fieldPath: 'played_at' }, op: 'GREATER_THAN_OR_EQUAL', value: { timestampValue: cutoff } } },
   } });
@@ -352,7 +370,7 @@ async function fetchRolling() {
   }
   if (!best.length) return [];
   const got = await post('batchGet', {
-    documents: best.map(s => `${DOC_PREFIX}/profiles/${s.user_id}`),
+    documents: best.map(s => `${DOC_PREFIX}/${TIERS[tier].profiles}/${s.user_id}`),
     mask: { fieldPaths: ['trail_name', 'pct_year'] },
   });
   const profiles = {};
@@ -369,10 +387,15 @@ function showState(id) {
 }
 
 function render(rows) {
-  if (rows.length === 0) { showState('state-empty'); return; }
-  document.getElementById('window-note').textContent = currentView === 'rolling'
-    ? 'Highest score per player in the last 90 days · max 2655.8 pts'
-    : 'Highest score per player, all time · max 2655.8 pts';
+  const guests = currentTier === 'guests';
+  document.getElementById('window-note').textContent =
+    (currentView === 'rolling' ? 'Highest score per player in the last 90 days' : 'Highest score per player, all time')
+    + (guests ? ' · unofficial, played without signing in' : ' · max 2655.8 pts');
+  if (rows.length === 0) {
+    document.getElementById('empty-link').href = TIERS[currentTier].play;
+    showState('state-empty');
+    return;
+  }
 
   const tbody = document.getElementById('lb-body');
   tbody.innerHTML = '';
@@ -397,7 +420,7 @@ function render(rows) {
     tr.innerHTML = `
       <td class="rank-cell">${rankHtml}</td>
       <td class="name-cell">
-        <a href="/hiker/?id=${profileId}" class="hiker-link">${name}</a>
+        ${guests ? `<span class="guest-name">${name}</span>` : `<a href="/hiker/?id=${profileId}" class="hiker-link">${name}</a>`}
         ${yearHtml}
       </td>
       <td class="score-cell">${score} pts</td>
@@ -411,33 +434,38 @@ function render(rows) {
 
 // Highlight the current player's own row
 function highlightMe() {
-  if (!currentUserId) return;
+  const uid = myUid[currentTier];
+  if (!uid) return;
   document.querySelectorAll('#lb-body tr').forEach(tr =>
-    tr.classList.toggle('lb-row-me', tr.dataset.uid === currentUserId));
+    tr.classList.toggle('lb-row-me', tr.dataset.uid === uid));
 }
+
+// Only players with both a trail name and a PCT year are listed (the rules
+// require both for new profiles; this also covers older imported data)
+const listed = rows => rows.filter(r => (r.name || '').trim() && (r.year || '').trim());
 
 // Draw the last copy this browser saw straight away, then swap in fresh data
 async function loadScores() {
-  const view = currentView;
-  const cacheKey = `pct_lb_${view}`;
+  const tier = currentTier, view = currentView;
+  const isCurrent = () => tier === currentTier && view === currentView;
+  const cacheKey = `pct_lb_${tier}_${view}`;
   const cached = cacheGet(cacheKey);
   if (cached) render(cached);
   else showState('state-loading');
   try {
-    const rows = await (view === 'rolling' ? fetchRolling() : fetchAllTime());
+    const rows = listed(await (view === 'rolling' ? fetchRolling(tier) : fetchAllTime(tier)));
     cacheSet(cacheKey, rows);
-    if (view === currentView) render(rows);
+    if (isCurrent()) render(rows);
   } catch (err) {
     // Keep showing the cached copy if there is one; the error detail isn't
     // meaningful to players, so it only goes to the console.
     console.error('Leaderboard load failed:', err);
-    if (!cached && view === currentView) showState('state-error');
+    if (!cached && isCurrent()) showState('state-error');
   }
 }
 
 function applyRollingSetting(enabled) {
   document.getElementById('tab-bar').style.display = enabled ? '' : 'none';
-  document.getElementById('lb-title').textContent = enabled ? 'All-Time Leaderboard' : 'Leaderboard';
 }
 
 async function loadRollingSetting() {
@@ -449,9 +477,10 @@ async function loadRollingSetting() {
   } catch (_) {}
 }
 
-// The game page stores the uid in localStorage on sign-in. Players who signed
-// in before that existed: read it from Firebase Auth's own IndexedDB record.
-function readFirebaseUid() {
+// The game pages store the uid in localStorage on sign-in. Players who signed
+// in before that existed: read it from Firebase Auth's own IndexedDB record
+// (key 'firebase:authUser:<apiKey>:<appName>').
+function readFirebaseUid(appName) {
   return new Promise(resolve => {
     try {
       const req = indexedDB.open('firebaseLocalStorageDb');
@@ -462,7 +491,8 @@ function readFirebaseUid() {
         try {
           const all = idb.transaction('firebaseLocalStorage').objectStore('firebaseLocalStorage').getAll();
           all.onsuccess = () => {
-            const hit = all.result.find(r => String(r.fbase_key).startsWith('firebase:authUser:'));
+            const hit = all.result.find(r => String(r.fbase_key).startsWith('firebase:authUser:')
+                                          && String(r.fbase_key).endsWith(':' + appName));
             resolve(hit?.value?.uid ?? null);
             idb.close();
           };
@@ -474,12 +504,23 @@ function readFirebaseUid() {
 }
 
 async function findMe() {
-  try { currentUserId = localStorage.getItem('pct_uid'); } catch (_) {}
-  if (!currentUserId) {
-    currentUserId = await readFirebaseUid();
-    if (currentUserId) try { localStorage.setItem('pct_uid', currentUserId); } catch (_) {}
+  for (const [tier, t] of Object.entries(TIERS)) {
+    try { myUid[tier] = localStorage.getItem(t.uidKey); } catch (_) {}
+    if (!myUid[tier]) {
+      myUid[tier] = await readFirebaseUid(t.app);
+      if (myUid[tier]) try { localStorage.setItem(t.uidKey, myUid[tier]); } catch (_) {}
+    }
   }
   highlightMe();
+}
+
+function switchTier(tier) {
+  currentTier = tier;
+  document.getElementById('tab-official').classList.toggle('tab-active', tier === 'official');
+  document.getElementById('tab-guests').classList.toggle('tab-active', tier === 'guests');
+  // Keep the address shareable (?board=guests)
+  try { history.replaceState(null, '', tier === 'guests' ? '?board=guests' : location.pathname); } catch (_) {}
+  loadScores();
 }
 
 function switchView(view) {
@@ -489,11 +530,13 @@ function switchView(view) {
   loadScores();
 }
 
+document.getElementById('tab-official').addEventListener('click', () => switchTier('official'));
+document.getElementById('tab-guests').addEventListener('click', () => switchTier('guests'));
 document.getElementById('tab-alltime').addEventListener('click', () => switchView('alltime'));
 document.getElementById('tab-rolling').addEventListener('click', () => switchView('rolling'));
 document.getElementById('tab-alltime').classList.add('tab-active');
 applyRollingSetting(cacheGet('pct_lb_rolling_on') === true);
-loadScores();
+switchTier(currentTier);
 loadRollingSetting();
 findMe();
 </script>

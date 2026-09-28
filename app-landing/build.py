@@ -59,6 +59,7 @@ html = f"""<!DOCTYPE html>
   /* PCT palette */
   --pct-green: #1D502E;   /* forest green  — scored game button, accents */
   --pct-teal:  #008080;   /* teal/dark cyan — practice button, links     */
+  --pct-blue:  #1C2D50;   /* navy — guest button                          */
   --pct-white: #FFFFFF;
   /* ── Font preference (overridden at runtime by font-pref.js if site_settings
         primary_font = 'open-sans'). Default: Futura stack. ── */
@@ -143,9 +144,10 @@ h1 span {{ color: var(--pct-teal); }}
 .rules-card a {{ color: var(--pct-teal); text-decoration: underline; }}
 .rules-card a:hover {{ color: #5fd4d4; }}
 
-/* ── Two CTA buttons ──────────────────────────────────── */
+/* ── CTA buttons: Practice, Guest, Scored — one per row ── */
 .start-buttons {{
   display: flex;
+  flex-direction: column;
   gap: 12px;
   max-width: 400px;
   width: 100%;
@@ -160,25 +162,25 @@ h1 span {{ color: var(--pct-teal); }}
   cursor: pointer;
   text-decoration: none;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 2px;
   transition: filter .15s, transform .1s;
   letter-spacing: .01em;
   color: var(--pct-white);
   text-align: center;
   line-height: 1.3;
 }}
-/* Practice — PCT teal; Scored — PCT green */
+/* Practice — PCT teal; Guest — navy; Scored — PCT green */
 .btn-practice {{ background: var(--pct-teal); }}
+.btn-guest    {{ background: var(--pct-blue); border: 1px solid #2f4a7a; }}
 .btn-scored   {{ background: var(--pct-green); }}
+/* Small second line saying what each mode is */
+.btn-note {{ font-size: 12px; font-weight: 400; opacity: .8; letter-spacing: 0; }}
 .btn-cta:hover  {{ filter: brightness(1.25); transform: translateY(-1px); }}
 .btn-cta:active {{ transform: translateY(0); }}
 
-/* Stack vertically on phones */
-@media (max-width: 480px) {{
-  .start-buttons {{ flex-direction: column; }}
-  .btn-cta {{ width: 100%; }}
-}}
 .btn-cta {{ white-space: nowrap; }}
 
 /* ── Footer links ─────────────────────────────────────── */
@@ -203,8 +205,9 @@ h1 span {{ color: var(--pct-teal); }}
   .rules-card {{ max-width: 580px; padding: 22px 26px; }}
   .rules-card h3 {{ font-size: 12px; margin-bottom: 14px; }}
   .rules-card li {{ font-size: 16px; }}
-  .start-buttons {{ max-width: 580px; gap: 16px; }}
+  .start-buttons {{ max-width: 440px; gap: 14px; }}
   .btn-cta {{ font-size: 18px; padding: 15px 16px; }}
+  .btn-note {{ font-size: 13px; }}
 }}
 </style>
 {FONT_PREF_SCRIPT}
@@ -231,7 +234,7 @@ h1 span {{ color: var(--pct-teal); }}
     <ul>
       <li>You'll see 10 photos taken somewhere along the PCT</li>
       <li><span>Enter the PCT (NoBo) mile you think matches the location (<a href="https://pcta.maps.arcgis.com/apps/instant/sidebar/index.html?appid=3b1817932adf42009f30b6b38828212e" target="_blank" rel="noopener">see PCTA mile markers</a>)</span></li>
-      <li>You'll have <strong>60 seconds</strong> to guess</li>
+      <li>You'll have <strong>3 minutes</strong> to guess each location.</li>
     </ul>
     <h3>Scoring (top score wins)</h3>
     <ul>
@@ -248,8 +251,9 @@ h1 span {{ color: var(--pct-teal); }}
 
   <!-- CTA buttons -->
   <div class="start-buttons">
-    <a href="/practice/" class="btn-cta btn-practice">Practice Game →</a>
-    <a href="/game/"     class="btn-cta btn-scored">Scored Game →</a>
+    <a href="/practice/" class="btn-cta btn-practice">Practice Game →<span class="btn-note">No sign-in · just for fun</span></a>
+    <a href="/guest/"    class="btn-cta btn-guest">Play as Guest →<span class="btn-note">No sign-in · guest leaderboard</span></a>
+    <a href="/game/"     class="btn-cta btn-scored">Scored Game →<span class="btn-note">Google sign-in · official leaderboard</span></a>
   </div>
 
   <p class="footer-links">

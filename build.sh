@@ -18,6 +18,7 @@ set -e  # stop on first error
 
 # Ensure all deploy subdirectories exist (git doesn't track empty dirs)
 mkdir -p deploy/practice \
+         deploy/guest \
          deploy/game \
          deploy/leaderboard \
          deploy/hiker \
@@ -34,6 +35,7 @@ python3 app-admin/build.py
 cp app-landing/index.html                      deploy/index.html
 cp app-game/practice/index.html                deploy/practice/index.html
 cp app-game/scored/index.html                  deploy/game/index.html
+cp app-game/guest/index.html                   deploy/guest/index.html
 cp app-leaderboard/index.html                  deploy/leaderboard/index.html
 cp app-hiker/index.html                        deploy/hiker/index.html
 cp app-admin/index.html                        deploy/admin/index.html

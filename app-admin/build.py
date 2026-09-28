@@ -427,6 +427,10 @@ td.val-muted {{ color: var(--muted); }}
   <!-- ── VIEW: Edit Database ────────────────────────── -->
   <section id="view-edit" style="display:none">
     <div class="search-bar">
+      <select id="edit-tier" onchange="doSearch()" title="Which players to search" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:13px;cursor:pointer;font-family:inherit">
+        <option value="official">Official</option>
+        <option value="guests">Guests</option>
+      </select>
       <input type="text" id="search-input" placeholder="Search by trail name…" oninput="debounceSearch()">
       <button class="sort-btn" onclick="doSearch()">Search</button>
     </div>
@@ -465,6 +469,14 @@ td.val-muted {{ color: var(--muted); }}
 
 <script>
 const ADMIN_UID   = '{ADMIN_UID}';
+
+// Official (Google sign-in) and guest (anonymous, /guest/) collections
+const TIERS = {{
+  official: {{ profiles: 'profiles',       sessions: 'game_sessions',  guesses: 'game_guesses'  }},
+  guests:   {{ profiles: 'guest_profiles', sessions: 'guest_sessions', guesses: 'guest_guesses' }},
+}};
+// Tier picked in the Edit Database tab
+const editTier = () => TIERS[document.getElementById('edit-tier').value];
 const allPhotos   = {all_photos_json};
 
 // ── Firebase ──────────────────────────────────────────────
@@ -588,10 +600,12 @@ function computePhotoStats(guesses) {{
 
 async function loadAdminData() {{
   const {{ db, F }} = fb;
-  const [sessionsSnap, profilesSnap, guessesSnap] = await Promise.all([
+  // Photo stats use every guess, guests included; games/players are official
+  const [sessionsSnap, profilesSnap, guessesSnap, guestGuessesSnap] = await Promise.all([
     F.getDocs(F.collection(db, 'game_sessions')),
     F.getDocs(F.collection(db, 'profiles')),
     F.getDocs(F.collection(db, 'game_guesses')),
+    F.getDocs(F.collection(db, 'guest_guesses')),
   ]);
 
   const profiles = {{}};
@@ -606,7 +620,7 @@ async function loadAdminData() {{
   document.getElementById('chip-players').textContent = profilesSnap.size.toLocaleString();
   renderGames(games);
 
-  const statsMap = computePhotoStats(guessesSnap.docs.map(d => d.data()));
+  const statsMap = computePhotoStats([...guessesSnap.docs, ...guestGuessesSnap.docs].map(d => d.data()));
   document.getElementById('chip-photos').textContent = Object.keys(statsMap).length;
 
   mergedPhotos = allPhotos.map(p => ({{
@@ -785,7 +799,7 @@ async function doSearch() {{
   let data;
   try {{
     const {{ db, F }} = fb;
-    const snap = await F.getDocs(F.collection(db, 'profiles'));
+    const snap = await F.getDocs(F.collection(db, editTier().profiles));
     const all  = snap.docs.map(d => ({{ id: d.id, ...d.data() }}));
     if (q) {{
       const needle = q.toLowerCase();
@@ -810,9 +824,12 @@ async function doSearch() {{
     const row  = document.createElement('div');
     row.className = 'player-result-row';
     row.id = 'player-row-' + p.id;
-    // Build static content
+    // Build static content (guests have no /hiker/ page)
+    const nameHtml = editTier() === TIERS.guests
+      ? `<span class="player-name">${{esc(name)}}</span>`
+      : `<a href="/hiker/?id=${{encodeURIComponent(p.id)}}" target="_blank" class="player-name" style="color:var(--teal);text-decoration:none">${{esc(name)}}</a>`;
     row.innerHTML = `
-      <a href="/hiker/?id=${{encodeURIComponent(p.id)}}" target="_blank" class="player-name" style="color:var(--teal);text-decoration:none">${{esc(name)}}</a>
+      ${{nameHtml}}
       <span class="player-year">${{esc(year)}}</span>
       <span class="player-id">${{esc(p.id)}}</span>
       <div class="player-actions" id="actions-${{p.id}}"></div>`;
@@ -824,7 +841,7 @@ async function doSearch() {{
 
 async function getGameCount(userId) {{
   const {{ db, F }} = fb;
-  const snap = await F.getCountFromServer(F.query(F.collection(db, 'game_sessions'), F.where('user_id', '==', userId)));
+  const snap = await F.getCountFromServer(F.query(F.collection(db, editTier().sessions), F.where('user_id', '==', userId)));
   return snap.data().count;
 }}
 
@@ -832,10 +849,11 @@ async function getGameCount(userId) {{
 // profile's game counters (so they can play again) or deletes the profile.
 async function deletePlayerData(userId, deleteProfile) {{
   const {{ db, F }} = fb;
-  const sessions = await F.getDocs(F.query(F.collection(db, 'game_sessions'), F.where('user_id', '==', userId)));
+  const T = editTier();
+  const sessions = await F.getDocs(F.query(F.collection(db, T.sessions), F.where('user_id', '==', userId)));
   const refs = [];
   for (const s of sessions.docs) {{
-    const guesses = await F.getDocs(F.query(F.collection(db, 'game_guesses'), F.where('session_id', '==', s.id)));
+    const guesses = await F.getDocs(F.query(F.collection(db, T.guesses), F.where('session_id', '==', s.id)));
     guesses.forEach(g => refs.push(g.ref));
     refs.push(s.ref);
   }}
@@ -844,7 +862,7 @@ async function deletePlayerData(userId, deleteProfile) {{
     refs.slice(i, i + 450).forEach(r => batch.delete(r));
     await batch.commit();
   }}
-  const profileRef = F.doc(db, 'profiles', userId);
+  const profileRef = F.doc(db, T.profiles, userId);
   if (deleteProfile) {{
     await F.deleteDoc(profileRef);
   }} else if ((await F.getDoc(profileRef)).exists()) {{
@@ -855,8 +873,8 @@ async function deletePlayerData(userId, deleteProfile) {{
 
 const clearBest = F => ({{ best_score: F.deleteField(), best_perfects: F.deleteField(), best_session_id: F.deleteField() }});
 
-// Rebuilds every profile's best_* fields from game_sessions (ties go to the
-// earlier game, matching the game page, which only replaces a strictly
+// Rebuilds every profile's best_* fields from its tier's sessions (ties go
+// to the earlier game, matching the game page, which only replaces a strictly
 // higher score). Only profiles that differ are written.
 async function recomputeBestScores() {{
   const btn      = document.getElementById('btn-recompute');
@@ -865,48 +883,55 @@ async function recomputeBestScores() {{
   statusEl.style.color = 'var(--muted)';
   statusEl.textContent = 'Reading games…';
   try {{
-    const {{ db, F }} = fb;
-    const [sessionsSnap, profilesSnap] = await Promise.all([
-      F.getDocs(F.collection(db, 'game_sessions')),
-      F.getDocs(F.collection(db, 'profiles')),
-    ]);
-    const best = {{}};
-    sessionsSnap.forEach(d => {{
-      const s = d.data();
-      const b = best[s.user_id];
-      if (!b || s.total_score > b.best_score
-          || (s.total_score === b.best_score && s.played_at.toMillis() < b.at)) {{
-        best[s.user_id] = {{ best_score: s.total_score, best_perfects: s.perfect_count, best_session_id: d.id, at: s.played_at.toMillis() }};
-      }}
-    }});
-    const updates = [];
-    profilesSnap.forEach(d => {{
-      const p = d.data();
-      const want = best[d.id];
-      if (want) {{
-        if (p.best_score !== want.best_score || p.best_perfects !== want.best_perfects
-            || p.best_session_id !== want.best_session_id) {{
-          updates.push([d.ref, {{ best_score: want.best_score, best_perfects: want.best_perfects, best_session_id: want.best_session_id }}]);
-        }}
-      }} else if ('best_score' in p || 'best_perfects' in p || 'best_session_id' in p) {{
-        updates.push([d.ref, clearBest(F)]);
-      }}
-    }});
-    for (let i = 0; i < updates.length; i += 450) {{
-      const batch = F.writeBatch(db);
-      updates.slice(i, i + 450).forEach(([ref, data]) => batch.update(ref, data));
-      await batch.commit();
+    const results = [];
+    for (const [label, T] of [['official', TIERS.official], ['guest', TIERS.guests]]) {{
+      const {{ updated, total }} = await recomputeTier(T);
+      results.push(`${{label}}: ${{updated ? `updated ${{updated}} of ${{total}}` : `all ${{total}} up to date`}}`);
     }}
     statusEl.style.color = 'var(--teal)';
-    statusEl.textContent = updates.length
-      ? `Updated ${{updates.length}} of ${{profilesSnap.size}} profiles ✓`
-      : `All ${{profilesSnap.size}} profiles already up to date ✓`;
+    statusEl.textContent = results.join(' · ') + ' ✓';
   }} catch (err) {{
     console.error('Recompute failed:', err);
     statusEl.style.color = 'var(--red)';
     statusEl.textContent = 'Error: ' + err.message;
   }}
   btn.disabled = false;
+}}
+
+async function recomputeTier(T) {{
+  const {{ db, F }} = fb;
+  const [sessionsSnap, profilesSnap] = await Promise.all([
+    F.getDocs(F.collection(db, T.sessions)),
+    F.getDocs(F.collection(db, T.profiles)),
+  ]);
+  const best = {{}};
+  sessionsSnap.forEach(d => {{
+    const s = d.data();
+    const b = best[s.user_id];
+    if (!b || s.total_score > b.best_score
+        || (s.total_score === b.best_score && s.played_at.toMillis() < b.at)) {{
+      best[s.user_id] = {{ best_score: s.total_score, best_perfects: s.perfect_count, best_session_id: d.id, at: s.played_at.toMillis() }};
+    }}
+  }});
+  const updates = [];
+  profilesSnap.forEach(d => {{
+    const p = d.data();
+    const want = best[d.id];
+    if (want) {{
+      if (p.best_score !== want.best_score || p.best_perfects !== want.best_perfects
+          || p.best_session_id !== want.best_session_id) {{
+        updates.push([d.ref, {{ best_score: want.best_score, best_perfects: want.best_perfects, best_session_id: want.best_session_id }}]);
+      }}
+    }} else if ('best_score' in p || 'best_perfects' in p || 'best_session_id' in p) {{
+      updates.push([d.ref, clearBest(F)]);
+    }}
+  }});
+  for (let i = 0; i < updates.length; i += 450) {{
+    const batch = F.writeBatch(db);
+    updates.slice(i, i + 450).forEach(([ref, data]) => batch.update(ref, data));
+    await batch.commit();
+  }}
+  return {{ updated: updates.length, total: profilesSnap.size }};
 }}
 
 // ── Delete Games ──────────────────────────────────────────
@@ -955,8 +980,8 @@ async function deletePlayer(userId, trailName) {{
     titleColor: 'var(--red)',
     body: `Permanently delete player <strong>"${{esc(trailName)}}"</strong> and their <strong>${{n}} game(s)</strong>.<br><br>
            Their <span class="danger-text">profile and all game data will be permanently removed</span>.<br><br>
-           <span class="warn-text">⚠ Their Google sign-in account will remain.</span>
-           Go to <strong>Firebase console → Authentication → Users</strong> and delete it there too to prevent re-signup.<br><br>
+           ${{editTier() === TIERS.guests ? '' : `<span class="warn-text">⚠ Their Google sign-in account will remain.</span>
+           Go to <strong>Firebase console → Authentication → Users</strong> and delete it there too to prevent re-signup.<br><br>`}}
            <span class="danger-text">This cannot be undone.</span>`,
     btnLabel: 'Yes, Delete Player',
     btnColor: 'var(--red)',
@@ -1041,7 +1066,7 @@ async function saveEditedName(userId) {{
   }}
   let error = null;
   try {{
-    await fb.F.updateDoc(fb.F.doc(fb.db, 'profiles', userId), {{ trail_name: newName }});
+    await fb.F.updateDoc(fb.F.doc(fb.db, editTier().profiles, userId), {{ trail_name: newName }});
   }} catch (err) {{
     error = err;
   }}

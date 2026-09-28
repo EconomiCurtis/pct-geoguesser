@@ -20,15 +20,27 @@ setLogLevel('silent');
 
 const PLAYER = 'player1';
 const OTHER  = 'player2';
+const GUEST  = 'guest1';
 const ADMIN_UID = '1791279a-bd07-4345-9448-e06ce5807d97';
 
 let env;
 
+// Real tokens carry firebase.sign_in_provider: 'google.com' for the scored
+// game, 'anonymous' for the guest page.
+const google = { sign_in_provider: 'google.com' };
 const anon   = () => env.unauthenticatedContext().firestore();
 const player = (uid = PLAYER) =>
-  env.authenticatedContext(uid, { email: `${uid}@example.com`, email_verified: true }).firestore();
+  env.authenticatedContext(uid, { email: `${uid}@example.com`, email_verified: true, firebase: google }).firestore();
 const admin  = () =>
-  env.authenticatedContext(ADMIN_UID, { email: 'admin@example.com', email_verified: true }).firestore();
+  env.authenticatedContext(ADMIN_UID, { email: 'admin@example.com', email_verified: true, firebase: google }).firestore();
+const guest  = (uid = GUEST) =>
+  env.authenticatedContext(uid, { firebase: { sign_in_provider: 'anonymous' } }).firestore();
+
+// Collection names per tier
+const TIERS = {
+  official: { profiles: 'profiles',       sessions: 'game_sessions',  guesses: 'game_guesses'  },
+  guest:    { profiles: 'guest_profiles', sessions: 'guest_sessions', guesses: 'guest_guesses' },
+};
 
 const ago = ms => Timestamp.fromMillis(Date.now() - ms);
 
@@ -41,6 +53,10 @@ async function seed({ gameCount = 0, lastGameAgoMs = null, bestScore = null } = 
     if (bestScore !== null) Object.assign(p1, { best_score: bestScore, best_perfects: 3, best_session_id: 'CCCCCCCCCCCCCCCCCCCC' });
     await setDoc(doc(db, 'profiles', PLAYER), p1);
     await setDoc(doc(db, 'profiles', OTHER), { ...base, trail_name: 'Other' });
+    await setDoc(doc(db, 'guest_profiles', GUEST), { ...base, trail_name: 'Guesty', game_count: 0 });
+    await setDoc(doc(db, 'guest_sessions', 'GGGGGGGGGGGGGGGGGGGG'), {
+      user_id: GUEST, total_score: 800, perfect_count: 0, photo_count: 10, played_at: ago(864e5),
+    });
     await setDoc(doc(db, 'game_sessions', 'AAAAAAAAAAAAAAAAAAAA'), {
       user_id: OTHER, total_score: 900, perfect_count: 0, photo_count: 10, played_at: ago(864e5),
     });
@@ -56,15 +72,16 @@ async function seed({ gameCount = 0, lastGameAgoMs = null, bestScore = null } = 
 // build malicious variants. By default the game is treated as a new best
 // (opts.best = false leaves best_* alone; an object replaces them).
 function gameBatch(db, uid = PLAYER, opts = {}) {
+  const T = TIERS[opts.tier ?? 'official'];
   const batch = writeBatch(db);
-  const sid = opts.sid ?? doc(collection(db, 'game_sessions')).id;
+  const sid = opts.sid ?? doc(collection(db, T.sessions)).id;
   const now = serverTimestamp();
   const score = opts.score ?? 1200.5;
   const perfect = opts.perfect ?? 2;
   const best = opts.best === false ? {}
     : opts.best ?? { best_score: score, best_perfects: perfect, best_session_id: sid };
   if (opts.profile !== false) {
-    batch.update(doc(db, 'profiles', uid), {
+    batch.update(doc(db, T.profiles, uid), {
       game_count: increment(opts.inc ?? 1),
       last_game_at: now,
       last_session_id: opts.lastSessionId ?? sid,
@@ -72,7 +89,7 @@ function gameBatch(db, uid = PLAYER, opts = {}) {
       ...(opts.profileExtra ?? {}),
     });
   }
-  batch.set(doc(db, 'game_sessions', sid), {
+  batch.set(doc(db, T.sessions, sid), {
     user_id: opts.userId ?? uid,
     total_score: score,
     perfect_count: perfect,
@@ -81,7 +98,7 @@ function gameBatch(db, uid = PLAYER, opts = {}) {
     ...(opts.sessionExtra ?? {}),
   });
   const ids = opts.guessIds ?? Array.from({ length: 10 }, (_, i) => `${sid}_${i}`);
-  ids.forEach((gid, i) => batch.set(doc(db, 'game_guesses', gid), {
+  ids.forEach((gid, i) => batch.set(doc(db, T.guesses, gid), {
     session_id: sid, photo_id: 'abcde', true_mile: 100.5,
     guessed_mile: i === 0 ? null : 120, score: opts.guessScore ?? 120.25, timed_out: i === 0,
   }));
@@ -283,6 +300,53 @@ describe('best score (leaderboard)', () => {
     await assertSucceeds(updateDoc(doc(admin(), 'profiles', PLAYER), { best_score: 900, best_perfects: 0, best_session_id: 'AAAAAAAAAAAAAAAAAAAA' }));
     await assertSucceeds(updateDoc(doc(admin(), 'profiles', PLAYER), { best_score: deleteField(), best_perfects: deleteField(), best_session_id: deleteField() }));
     await assertFails(updateDoc(doc(admin(), 'profiles', PLAYER), { best_score: 9999 }));
+  });
+});
+
+describe('guest tier', () => {
+  const fresh = { trail_name: 'Newbie', pct_year: '2026', about: null, created_at: serverTimestamp() };
+
+  test('a guest can create a guest profile but not an official one', async () => {
+    await assertSucceeds(setDoc(doc(guest('g2'), 'guest_profiles', 'g2'), fresh));
+    await assertFails(setDoc(doc(guest('g3'), 'profiles', 'g3'), fresh));
+  });
+  test('a Google player cannot create a guest profile', async () => {
+    await assertFails(setDoc(doc(player('newbie'), 'guest_profiles', 'newbie'), fresh));
+  });
+  test('a guest can save a game to the guest tier', async () => {
+    await assertSucceeds(gameBatch(guest(), GUEST, { tier: 'guest' }).batch.commit());
+  });
+  test('guest games get the same rate limit, cap and best-score checks', async () => {
+    await assertSucceeds(gameBatch(guest(), GUEST, { tier: 'guest', score: 1000 }).batch.commit());
+    await assertFails(gameBatch(guest(), GUEST, { tier: 'guest', score: 1500 }).batch.commit());
+    await env.withSecurityRulesDisabled(ctx =>
+      updateDoc(doc(ctx.firestore(), 'guest_profiles', GUEST), { game_count: 15, last_game_at: ago(864e5) }));
+    await assertFails(gameBatch(guest(), GUEST, { tier: 'guest' }).batch.commit());
+  });
+  test('guests cannot write official scores, and Google players cannot write guest scores', async () => {
+    await assertFails(gameBatch(guest(), GUEST).batch.commit());
+    await assertFails(gameBatch(player(), PLAYER, { tier: 'guest' }).batch.commit());
+  });
+  test('cannot mix tiers inside one save', async () => {
+    const db = guest();
+    const sid = doc(collection(db, 'guest_sessions')).id;
+    const { batch } = gameBatch(db, GUEST, { tier: 'guest', sid, guessIds: [] });
+    batch.set(doc(db, 'game_guesses', `${sid}_0`), {
+      session_id: sid, photo_id: 'abcde', true_mile: 1, guessed_mile: 1, score: 265, timed_out: false,
+    });
+    await assertFails(batch.commit());
+  });
+  test('guests cannot edit other guests, or set their own best', async () => {
+    await assertFails(updateDoc(doc(guest('g2'), 'guest_profiles', GUEST), { trail_name: 'Hacked' }));
+    await assertSucceeds(updateDoc(doc(guest(), 'guest_profiles', GUEST), { trail_name: 'Renamed' }));
+    await assertFails(updateDoc(doc(guest(), 'guest_profiles', GUEST), { best_score: 2600 }));
+  });
+  test('anyone can read the guest leaderboard; only admin can delete guest data', async () => {
+    await assertSucceeds(getDocs(query(collection(anon(), 'guest_profiles'), orderBy('best_score', 'desc'), limit(100))));
+    await assertFails(deleteDoc(doc(guest(), 'guest_sessions', 'GGGGGGGGGGGGGGGGGGGG')));
+    await assertSucceeds(updateDoc(doc(admin(), 'guest_profiles', GUEST), { trail_name: 'Cleaned Up' }));
+    await assertSucceeds(deleteDoc(doc(admin(), 'guest_sessions', 'GGGGGGGGGGGGGGGGGGGG')));
+    await assertSucceeds(deleteDoc(doc(admin(), 'guest_profiles', GUEST)));
   });
 });
 

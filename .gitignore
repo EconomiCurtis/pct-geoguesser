@@ -56,6 +56,7 @@ other/
 app-landing/index.html
 app-game/practice/index.html
 app-game/scored/index.html
+app-game/guest/index.html
 app-leaderboard/index.html
 app-leaderboard/all-time/
 app-hiker/index.html

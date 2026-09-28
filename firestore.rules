@@ -5,11 +5,17 @@ rules_version = '2';
 //
 // Everything is publicly readable (leaderboard, hiker pages, stats).
 //
+// Two tiers with identical shapes and rules:
+//   Official (Google sign-in):   profiles, game_sessions, game_guesses
+//   Guest (anonymous sign-in):   guest_profiles, guest_sessions, guest_guesses
+// Google accounts can only write the official tier and anonymous accounts only
+// the guest tier, so guest scores can never reach the official leaderboard.
+//
 // Saving a scored game is one batched write from the game page:
-//   profiles/{uid}          game_count + 1, last_game_at = now, last_session_id
-//                           (+ best_* when the game beats the player's best)
-//   game_sessions/{sid}     the game (played_at = now)
-//   game_guesses/{sid}_{i}  one per photo (i = 0..9)
+//   <profiles>/{uid}           game_count + 1, last_game_at = now, last_session_id
+//                              (+ best_* when the game beats the player's best)
+//   <sessions>/{sid}           the game (played_at = now)
+//   <guesses>/{sid}_{i}        one per photo (i = 0..9)
 // The profile update carries the rate limit (1 per minute) and the 15-game cap;
 // the session and guesses are only accepted inside that same write.
 
@@ -27,8 +33,14 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == uid;
     }
 
-    function profilePath(uid) {
-      return /databases/$(database)/documents/profiles/$(uid);
+    // Signed in with Firebase anonymous auth (the /guest/ page)
+    function isGuest() {
+      return request.auth != null
+        && request.auth.token.get('firebase', {}).get('sign_in_provider', '') == 'anonymous';
+    }
+
+    function docPath(coll, id) {
+      return /databases/$(database)/documents/$(coll)/$(id);
     }
 
     // ── profiles ──────────────────────────────────────────────────────────
@@ -65,8 +77,8 @@ service cloud.firestore {
 
     // The game saved in this same write must be the player's own new one; if
     // it beats their best, the best_* fields must copy it, otherwise stay put.
-    function bestTracksGame(d) {
-      let s    = getAfter(/databases/$(database)/documents/game_sessions/$(d.last_session_id)).data;
+    function bestTracksGame(d, sessions) {
+      let s    = getAfter(docPath(sessions, d.last_session_id)).data;
       let beat = s.total_score > resource.data.get('best_score', -1);
       return s.user_id == request.auth.uid && s.played_at == request.time
         && (beat
@@ -76,7 +88,7 @@ service cloud.firestore {
             : bestUnchanged());
     }
 
-    function isGameSubmission() {
+    function isGameSubmission(sessions) {
       let d    = request.resource.data;
       let prev = resource.data.get('last_game_at', null);
       return unchanged('trail_name', null) && unchanged('pct_year', null) && unchanged('about', null)
@@ -85,22 +97,39 @@ service cloud.firestore {
         && d.last_game_at == request.time
         && (prev == null || request.time > prev + duration.value(60, 's'))
         && d.last_session_id is string
-        && bestTracksGame(d);
+        && bestTracksGame(d, sessions);
+    }
+
+    function canCreateProfile(uid) {
+      return isOwner(uid)
+        && validProfile(request.resource.data)
+        && request.resource.data.created_at == request.time
+        && request.resource.data.keys().hasOnly(['trail_name', 'pct_year', 'about', 'created_at']);
+    }
+
+    // rightTier: whether the signed-in account belongs to this tier
+    function canUpdateProfile(uid, sessions, rightTier) {
+      return validProfile(request.resource.data)
+        && unchanged('created_at', null)
+        && ((isOwner(uid) && rightTier && (isProfileEdit() || isGameSubmission(sessions)))
+            || isAdmin());
     }
 
     match /profiles/{uid} {
       allow read: if true;
-      allow create: if isOwner(uid)
-        && validProfile(request.resource.data)
-        && request.resource.data.created_at == request.time
-        && request.resource.data.keys().hasOnly(['trail_name', 'pct_year', 'about', 'created_at']);
-      allow update: if validProfile(request.resource.data)
-        && unchanged('created_at', null)
-        && ((isOwner(uid) && (isProfileEdit() || isGameSubmission())) || isAdmin());
+      allow create: if !isGuest() && canCreateProfile(uid);
+      allow update: if canUpdateProfile(uid, 'game_sessions', !isGuest());
       allow delete: if isAdmin();
     }
 
-    // ── game_sessions ─────────────────────────────────────────────────────
+    match /guest_profiles/{uid} {
+      allow read: if true;
+      allow create: if isGuest() && canCreateProfile(uid);
+      allow update: if canUpdateProfile(uid, 'guest_sessions', isGuest());
+      allow delete: if isAdmin();
+    }
+
+    // ── sessions ──────────────────────────────────────────────────────────
     function validSession(d) {
       return d.keys().hasOnly(['user_id', 'total_score', 'perfect_count', 'photo_count', 'played_at'])
         && d.total_score is number && d.total_score >= 0 && d.total_score <= 2680
@@ -108,20 +137,31 @@ service cloud.firestore {
         && d.perfect_count is int && d.perfect_count >= 0 && d.perfect_count <= d.photo_count;
     }
 
-    match /game_sessions/{sid} {
-      allow read: if true;
-      // sid must be a Firestore auto-ID (it is embedded in guess-id patterns)
-      allow create: if request.auth != null
+    // sid must be a Firestore auto-ID (it is embedded in guess-id patterns).
+    // The profile update in the same write is what enforces the tier.
+    function canCreateSession(sid, profiles) {
+      return request.auth != null
         && sid.matches('[A-Za-z0-9]{20}')
         && validSession(request.resource.data)
         && request.resource.data.user_id == request.auth.uid
         && request.resource.data.played_at == request.time
-        && getAfter(profilePath(request.auth.uid)).data.last_session_id == sid
-        && getAfter(profilePath(request.auth.uid)).data.last_game_at == request.time;
+        && getAfter(docPath(profiles, request.auth.uid)).data.last_session_id == sid
+        && getAfter(docPath(profiles, request.auth.uid)).data.last_game_at == request.time;
+    }
+
+    match /game_sessions/{sid} {
+      allow read: if true;
+      allow create: if canCreateSession(sid, 'profiles');
       allow delete: if isAdmin();
     }
 
-    // ── game_guesses ──────────────────────────────────────────────────────
+    match /guest_sessions/{sid} {
+      allow read: if true;
+      allow create: if canCreateSession(sid, 'guest_profiles');
+      allow delete: if isAdmin();
+    }
+
+    // ── guesses ───────────────────────────────────────────────────────────
     function validGuess(d) {
       return d.keys().hasOnly(['session_id', 'photo_id', 'true_mile', 'guessed_mile', 'score', 'timed_out'])
         && d.session_id is string && d.session_id.matches('[A-Za-z0-9]{20}')
@@ -132,13 +172,23 @@ service cloud.firestore {
         && d.timed_out is bool;
     }
 
-    match /game_guesses/{gid} {
-      allow read: if true;
-      allow create: if request.auth != null
+    function canCreateGuess(gid, sessions) {
+      return request.auth != null
         && validGuess(request.resource.data)
         && gid.matches(request.resource.data.session_id + '_[0-9]')
-        && getAfter(/databases/$(database)/documents/game_sessions/$(request.resource.data.session_id)).data.user_id == request.auth.uid
-        && getAfter(/databases/$(database)/documents/game_sessions/$(request.resource.data.session_id)).data.played_at == request.time;
+        && getAfter(docPath(sessions, request.resource.data.session_id)).data.user_id == request.auth.uid
+        && getAfter(docPath(sessions, request.resource.data.session_id)).data.played_at == request.time;
+    }
+
+    match /game_guesses/{gid} {
+      allow read: if true;
+      allow create: if canCreateGuess(gid, 'game_sessions');
+      allow delete: if isAdmin();
+    }
+
+    match /guest_guesses/{gid} {
+      allow read: if true;
+      allow create: if canCreateGuess(gid, 'guest_sessions');
       allow delete: if isAdmin();
     }
 

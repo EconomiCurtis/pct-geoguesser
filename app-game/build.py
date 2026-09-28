@@ -1,9 +1,16 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# build.py  —  PCT GeoGuesser  (game — practice + scored)
+# build.py  —  PCT GeoGuesser  (game — practice + guest + scored)
 #
-# Single source of truth for both game modes. Generates:
+# Single source of truth for all three game modes. Generates:
 #   app-game/practice/index.html  →  deployed at /practice/
+#   app-game/guest/index.html     →  deployed at /guest/
 #   app-game/scored/index.html    →  deployed at /game/
+#
+# Guest is the scored game without Google: Firebase anonymous sign-in, same
+# photos and rules, but saved to guest_profiles / guest_sessions /
+# guest_guesses and shown on the leaderboard's Guests tab. It runs under a
+# separate Firebase app name ('guest') so a browser can hold a guest identity
+# and a Google sign-in at the same time.
 #
 # To rebuild:
 #   python3 app-game/build.py
@@ -13,7 +20,9 @@
 #   npx wrangler pages deploy deploy/ --project-name=pct-geoguesser
 #
 # ── How the build works ───────────────────────────────────────────────────────
-# make_html(mode) is called twice — once for 'practice', once for 'scored'.
+# make_html(mode) is called three times — 'practice', 'guest', 'scored'.
+# Guest shares every scored-only block; `guest` switches names, copy and the
+# Firestore collections (the TIER dict).
 # It returns a complete self-contained index.html as a Python f-string.
 # The photos from photos.csv are baked in as an inline JSON array (no API call
 # at runtime). Scored-only features (auth, score submission, rank display) are
@@ -39,6 +48,10 @@
 #                                → screen-start (returning user)
 #                  → screen-guess → screen-result → ... → screen-end
 #                                                          (score submitted)
+#
+# Guest: same as Scored, but screen-auth offers "Play as Guest"
+#   (signInAnonymously) instead of Google, and there is no sign-out link
+#   (signing out would orphan the guest's scores).
 #
 # ── Key JS functions (in the generated HTML) ─────────────────────────────────
 #
@@ -81,10 +94,10 @@
 #   Timeout     → score = 0, perfect = false
 #
 # Timer
-#   TIMER_SEC = 60         → seconds per photo
+#   TIMER_SEC = 180        → seconds per photo (3 minutes)
 #   startTimer()           → sets timeLeft = TIMER_SEC, starts a 1-second
 #                             setInterval; calls renderTimer() each tick
-#   renderTimer()          → updates the red progress bar width and numeric
+#   renderTimer()          → updates the red progress bar width and the m:ss
 #                             countdown display
 #   stopTimer()            → clears the interval handle
 #   On timeout: if the input has a value, that value is submitted as a guess;
@@ -217,7 +230,17 @@ slider_sections = '\n      '.join(_sec_bars)
 
 def make_html(mode):
     practice  = (mode == 'practice')
+    guest     = (mode == 'guest')
     game_data = _photo_json(v1_photos if practice else v2_photos)
+
+    # Firestore collections + per-tier names (scored and guest only)
+    if guest:
+        TIER = {'profiles': 'guest_profiles', 'sessions': 'guest_sessions', 'guesses': 'guest_guesses'}
+        lb_url, uid_key, app_name_arg = '/leaderboard/?board=guests', 'pct_guest_uid', ", 'guest'"
+    else:
+        TIER = {'profiles': 'profiles', 'sessions': 'game_sessions', 'guesses': 'game_guesses'}
+        lb_url, uid_key, app_name_arg = '/leaderboard/', 'pct_uid', ''
+    tier_js = json.dumps(TIER)
 
     # ── Page metadata ────────────────────────────────────────
     if practice:
@@ -226,6 +249,12 @@ def make_html(mode):
         og_title   = 'PCT GeoGuesser — Practice'
         og_desc    = 'Test your PCT trail knowledge. No login required.'
         meta_desc  = 'How well do you know the Pacific Crest Trail? Guess the trail mile from 10 photos.'
+    elif guest:
+        page_title = 'PCT GeoGuesser — Guest'
+        og_url     = 'https://pct-geoguesser.economicurtis.com/guest/'
+        og_title   = 'PCT GeoGuesser — Guest'
+        og_desc    = 'Play the scored game without signing in.'
+        meta_desc  = 'Play PCT GeoGuesser as a guest — no sign-in. Scores go on the guest leaderboard.'
     else:
         page_title = 'PCT GeoGuesser — Scored'
         og_url     = 'https://pct-geoguesser.economicurtis.com/game/'
@@ -324,7 +353,29 @@ textarea.form-input { resize: vertical; min-height: 80px; font-size: 14px; line-
 .submit-error { display: none; font-size: 13px; color: #dc2626; }
 """
 
-    # ── HTML: auth + signup screens (scored only) ─────────────
+    # ── HTML: auth + signup screens (scored + guest) ──────────
+    google_svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="20" height="20">
+      <path fill="#FFC107" d="M43.6 20H24v8h11.3c-1.1 5.4-5.8 8-11.3 8-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l5.7-5.7C34.1 4.1 29.3 2 24 2 12.9 2 4 10.9 4 22s8.9 20 20 20 20-8.9 20-20c0-1.4-.1-2.7-.4-4z"/>
+      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.1 8 2.9l5.7-5.7C34.1 4.1 29.3 2 24 2c-7.7 0-14.4 4.3-17.7 10.7z"/>
+      <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2A11.9 11.9 0 0 1 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/>
+      <path fill="#1976D2" d="M43.6 20H42V20H24v8h11.3a12 12 0 0 1-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.4-.1-2.7-.4-4z"/>
+    </svg>"""
+    if guest:
+        auth_body = f"""  <p class="auth-sub">Play the scored game without signing in. Pick a name and your scores go on the <span style="white-space:nowrap"><a href="{lb_url}">guest leaderboard</a>.</span></p>
+  <button class="btn-green" id="btn-guest" onclick="signInAsGuest()">Play as Guest →</button>
+  <p class="auth-practice">Want the official leaderboard? <a href="/game/">Sign in with Google</a></p>"""
+        signup_subtitle = 'One-time setup — your name and year appear on the guest leaderboard.'
+    else:
+        auth_body = f"""  <p class="auth-sub">Sign in to compete on the <span style="white-space:nowrap">global <a href="/leaderboard/">leaderboard</a>.</span></p>
+  <button class="btn-google" id="btn-google" onclick="signInWithGoogle()">
+    {google_svg}
+    Sign in with Google
+  </button>
+  <p class="auth-practice">Rather not sign in? <a href="/guest/">Play as a guest</a> or <a href="/practice/">practice</a>.</p>"""
+        signup_subtitle = 'One-time setup — your name and year appear on the leaderboard.'
+    # Guests have no /hiker/ page, so no About field
+    about_field_style = ' style="display:none"' if guest else ''
+
     screens_auth_signup = '' if practice else f"""
 <!-- ════════════════ AUTH ════════════════ -->
 <div id="screen-auth" class="screen page-center">
@@ -335,17 +386,7 @@ textarea.form-input { resize: vertical; min-height: 80px; font-size: 14px; line-
     </div>
   </div>
   <h1>PCT <span>GeoGuesser</span></h1>
-  <p class="auth-sub">Sign in to compete on the <span style="white-space:nowrap">global <a href="/leaderboard/">leaderboard</a>.</span></p>
-  <button class="btn-google" id="btn-google" onclick="signInWithGoogle()">
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="20" height="20">
-      <path fill="#FFC107" d="M43.6 20H24v8h11.3c-1.1 5.4-5.8 8-11.3 8-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l5.7-5.7C34.1 4.1 29.3 2 24 2 12.9 2 4 10.9 4 22s8.9 20 20 20 20-8.9 20-20c0-1.4-.1-2.7-.4-4z"/>
-      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.1 8 2.9l5.7-5.7C34.1 4.1 29.3 2 24 2c-7.7 0-14.4 4.3-17.7 10.7z"/>
-      <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2A11.9 11.9 0 0 1 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/>
-      <path fill="#1976D2" d="M43.6 20H42V20H24v8h11.3a12 12 0 0 1-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.4-.1-2.7-.4-4z"/>
-    </svg>
-    Sign in with Google
-  </button>
-  <p class="auth-practice">No account? <a href="/practice/">Try Practice Mode</a> — no login required.</p>
+{auth_body}
 </div>
 
 <!-- ════════════════ SIGNUP ════════════════ -->
@@ -357,13 +398,13 @@ textarea.form-input { resize: vertical; min-height: 80px; font-size: 14px; line-
     </div>
   </div>
   <h1>PCT <span>GeoGuesser</span></h1>
-  <p class="start-sub" id="signup-subtitle">One-time setup — your name and year appear on the leaderboard.</p>
+  <p class="start-sub" id="signup-subtitle">{signup_subtitle}</p>
   <div class="signup-card">
     <h3>Your Hiker Profile</h3>
     <div class="form-field">
       <label class="form-label" for="trail-name-input">Trail Name</label>
       <input type="text" id="trail-name-input" class="form-input"
-             placeholder="e.g. Whiskey Jack" maxlength="60" autocomplete="off">
+             placeholder="e.g. Cherry Chapstick" maxlength="60" autocomplete="off">
       <p class="form-hint">Shown on the leaderboard next to your scores.</p>
     </div>
     <div class="form-field">
@@ -372,7 +413,7 @@ textarea.form-input { resize: vertical; min-height: 80px; font-size: 14px; line-
              placeholder="e.g. 2025, 2024 / 2026, planning 2027" maxlength="40" autocomplete="off">
       <p class="form-hint">When did / will you hike? Shown below your trail name.</p>
     </div>
-    <div class="form-field">
+    <div class="form-field"{about_field_style}>
       <label class="form-label" for="about-input">About <span class="char-count" id="about-char-count">(0/500)</span></label>
       <textarea id="about-input" class="form-input" rows="3"
                 placeholder="Optional: tell other hikers a bit about yourself…"
@@ -394,7 +435,7 @@ textarea.form-input { resize: vertical; min-height: 80px; font-size: 14px; line-
     <ul>
       <li>You'll see 10 photos taken somewhere along the PCT</li>
       <li><span>Enter the PCT (NoBo) mile you think matches the location (<a href="https://pcta.maps.arcgis.com/apps/instant/sidebar/index.html?appid=3b1817932adf42009f30b6b38828212e" target="_blank" rel="noopener">see PCTA mile markers</a>)</span></li>
-      <li>You'll have <strong>60 seconds</strong> to guess</li>
+      <li>You'll have <strong>3 minutes</strong> to guess each location.</li>
     </ul>
     <h3>Scoring (top score wins)</h3>
     <ul>
@@ -422,11 +463,27 @@ textarea.form-input { resize: vertical; min-height: 80px; font-size: 14px; line-
   <h1>PCT <span>GeoGuesser</span></h1>
   <p class="start-sub">How well do you know the Pacific Crest Trail?</p>
 {rules_card_html}
-  <button class="btn-green" onclick="startGame()">Start Game →</button>
+  <button class="btn-green" onclick="startGame()">Ready to practice? →</button>
   <p class="about-link"><a href="https://economicurtis.com/posts/004-pct-geoguesser/" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">About PCT GeoGuesser</a></p>
 </div>
 """
     else:
+        if guest:
+            greeting_html = '<p class="greeting">Hey, <span id="greeting-name" style="color:var(--text)">…</span>! 👋</p>'
+            start_label   = 'Ready to play? →'
+            start_links   = f"""<a href="{lb_url}">Leaderboard</a>
+    <span class="dot">·</span>
+    <a href="#" onclick="showEditProfile(); return false;">Edit Profile</a>
+    <span class="dot">·</span>
+    <a href="/game/">Sign in with Google</a>"""
+        else:
+            greeting_html = '<p class="greeting">Hey, <a id="greeting-name" class="greeting-link" href="#">…</a>! 👋</p>'
+            start_label   = 'Ready to play? →'
+            start_links   = """<a href="/leaderboard/">Leaderboard</a>
+    <span class="dot">·</span>
+    <a href="#" onclick="showEditProfile(); return false;">Edit Profile</a>
+    <span class="dot">·</span>
+    <a href="#" onclick="signOut(); return false;">Sign out</a>"""
         screen_start = f"""
 <!-- ════════════════ START (authenticated) ════════════════ -->
 <div id="screen-start" class="screen page-center">
@@ -437,22 +494,22 @@ textarea.form-input { resize: vertical; min-height: 80px; font-size: 14px; line-
     </div>
   </div>
   <h1>PCT <span>GeoGuesser</span></h1>
-  <p class="greeting">Hey, <a id="greeting-name" class="greeting-link" href="#">…</a>! 👋</p>
+  {greeting_html}
 {rules_card_html}
-  <button class="btn-green" onclick="startGame()">Start Scored Game →</button>
+  <button class="btn-green" onclick="startGame()">{start_label}</button>
   <div class="start-links">
-    <a href="/leaderboard/">Leaderboard</a>
-    <span class="dot">·</span>
-    <a href="#" onclick="showEditProfile(); return false;">Edit Profile</a>
-    <span class="dot">·</span>
-    <a href="#" onclick="signOut(); return false;">Sign out</a>
+    {start_links}
   </div>
   <p class="about-link"><a href="https://economicurtis.com/posts/004-pct-geoguesser/" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">About PCT GeoGuesser</a></p>
 </div>
 """
 
     # ── HTML: end screen submit card (scored only) ─────────────
-    end_submit_card = '' if practice else """
+    rank_label = '90-day guest rank' if guest else '90-day leaderboard rank'
+    rank_sub   = 'among guest games this season' if guest else 'among all scored games this season'
+    guest_upsell = ('\n    <p class="auth-practice">Want to be on the official board? '
+                    '<a href="/game/">Sign in with Google</a></p>') if guest else ''
+    end_submit_card = '' if practice else f"""
   <!-- Score submission + rank -->
   <div class="submit-card">
     <div class="submit-loading" id="submit-loading">
@@ -460,10 +517,10 @@ textarea.form-input { resize: vertical; min-height: 80px; font-size: 14px; line-
       Saving score…
     </div>
     <div class="submit-success" id="submit-success">
-      <p class="rank-label">90-day leaderboard rank</p>
+      <p class="rank-label">{rank_label}</p>
       <span class="rank-num" id="rank-num">#?</span>
-      <p class="rank-sub">among all scored games this season</p>
-      <a href="/leaderboard/" class="rank-lb-link">View Full Leaderboard →</a>
+      <p class="rank-sub">{rank_sub}</p>
+      <a href="{lb_url}" class="rank-lb-link">View Full Leaderboard →</a>{guest_upsell}
     </div>
     <p class="submit-error" id="submit-error"></p>
   </div>
@@ -511,9 +568,9 @@ textarea.form-input { resize: vertical; min-height: 80px; font-size: 14px; line-
     </div>
   </div>"""
     else:
-        end_actions = """  <div class="end-actions">
-    <a href="/" class="btn-green">Play Again <svg width="0.9em" height="0.9em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.1em" aria-hidden="true"><path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/><path d="M20.5 3.5v5h-5"/></svg></a>
-    <a href="/leaderboard/" class="btn-outline">Leaderboard →</a>
+        end_actions = f"""  <div class="end-actions">
+    <a href="#" class="btn-green" onclick="showScreen('screen-start'); return false;">Play Again <svg width="0.9em" height="0.9em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.1em" aria-hidden="true"><path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/><path d="M20.5 3.5v5h-5"/></svg></a>
+    <a href="{lb_url}" class="btn-outline">Leaderboard →</a>
   </div>"""
 
     # ── JS: Firebase init + auth functions (scored only) ──────
@@ -530,7 +587,7 @@ const fbReady = Promise.all([
   import('{FIREBASE_SDK_BASE}/firebase-auth.js'),
   import('{FIREBASE_SDK_BASE}/firebase-firestore.js'),
 ]).then(([appMod, A, F]) => {{
-  const app = appMod.initializeApp({FIREBASE_CONFIG_JS});
+  const app = appMod.initializeApp({FIREBASE_CONFIG_JS}{app_name_arg});
   fb = {{ auth: A.getAuth(app), db: F.getFirestore(app), A, F }};
   return fb;
 }});
@@ -539,14 +596,19 @@ let currentUser      = null;
 let currentProfile   = null;
 let isEditingProfile = false;
 
+// Firestore collections for this page's tier (the guest page uses guest_*)
+const COL      = {tier_js};
+const IS_GUEST = {'true' if guest else 'false'};
+const SIGNUP_SUBTITLE = '{signup_subtitle}';
+
 fbReady.then(({{ auth, A }}) => {{
   A.onAuthStateChanged(auth, async user => {{
     currentUser = user;
     // Lets the leaderboard highlight this player's row without loading
     // Firebase Auth (the uid is already public in /hiker/ links)
     try {{
-      if (user) localStorage.setItem('pct_uid', user.uid);
-      else localStorage.removeItem('pct_uid');
+      if (user) localStorage.setItem('{uid_key}', user.uid);
+      else localStorage.removeItem('{uid_key}');
     }} catch (_) {{}}
     if (user) {{
       await loadProfile();
@@ -564,7 +626,7 @@ async function loadProfile() {{
   const {{ db, F }} = fb;
   let snap;
   try {{
-    snap = await F.getDoc(F.doc(db, 'profiles', currentUser.uid));
+    snap = await F.getDoc(F.doc(db, COL.profiles, currentUser.uid));
   }} catch (err) {{
     console.error('Profile load failed:', err);
     showScreen('screen-auth');
@@ -574,7 +636,7 @@ async function loadProfile() {{
     currentProfile = snap.data();
     const greetEl = document.getElementById('greeting-name');
     greetEl.textContent = currentProfile.trail_name;
-    greetEl.href = `/hiker/?id=${{currentUser.uid}}`;
+    if (!IS_GUEST) greetEl.href = `/hiker/?id=${{currentUser.uid}}`;
     prepareNextGame();
     showScreen('screen-start');
   }} else {{
@@ -603,6 +665,20 @@ function signInWithGoogle() {{
   }});
 }}
 
+// Guest page: Firebase anonymous sign-in; onAuthStateChanged takes over
+function signInAsGuest() {{
+  if (!fb) return;
+  const btn = document.getElementById('btn-guest');
+  btn.disabled = true;
+  btn.textContent = 'Starting…';
+  fb.A.signInAnonymously(fb.auth).catch(err => {{
+    console.error('Guest sign-in failed:', err);
+    btn.disabled = false;
+    btn.textContent = 'Play as Guest →';
+    alert('Could not start a guest session. Please try again.');
+  }});
+}}
+
 async function saveProfile() {{
   const trailName = document.getElementById('trail-name-input').value.trim();
   const pctYear   = document.getElementById('pct-year-input').value.trim();
@@ -621,7 +697,7 @@ async function saveProfile() {{
     btn.textContent = 'Still saving…';
   }}, 5000);
   const {{ db, F }} = fb;
-  const ref    = F.doc(db, 'profiles', currentUser.uid);
+  const ref    = F.doc(db, COL.profiles, currentUser.uid);
   const fields = {{ trail_name: trailName, pct_year: pctYear, about: about || null }};
   let saveErr = null;
   try {{
@@ -642,8 +718,8 @@ async function saveProfile() {{
   currentProfile = {{ ...(currentProfile || {{}}), ...fields }};
   const greetEl = document.getElementById('greeting-name');
   greetEl.textContent = trailName;
-  greetEl.href = `/hiker/?id=${{currentUser.uid}}`;
-  document.getElementById('signup-subtitle').textContent = 'One-time setup — your name and year appear on the leaderboard.';
+  if (!IS_GUEST) greetEl.href = `/hiker/?id=${{currentUser.uid}}`;
+  document.getElementById('signup-subtitle').textContent = SIGNUP_SUBTITLE;
   document.getElementById('signup-cancel').style.display = 'none';
   btn.textContent = 'Save and Play →';
   isEditingProfile = false;
@@ -667,7 +743,7 @@ function showEditProfile() {{
 
 function cancelEditProfile() {{
   isEditingProfile = false;
-  document.getElementById('signup-subtitle').textContent = 'One-time setup — your name and year appear on the leaderboard.';
+  document.getElementById('signup-subtitle').textContent = SIGNUP_SUBTITLE;
   document.getElementById('btn-save-profile').textContent = 'Save and Play →';
   document.getElementById('signup-cancel').style.display = 'none';
   showScreen('screen-start');
@@ -711,7 +787,7 @@ async function submitGameScore() {{
 
   const {{ db, F }}  = fb;
   const MAX_GAMES  = 15;
-  const profileRef = F.doc(db, 'profiles', currentUser.uid);
+  const profileRef = F.doc(db, COL.profiles, currentUser.uid);
   // Re-read the profile: another tab or device may have saved a game since
   // sign-in, and the best-score check below must compare against the latest.
   try {{
@@ -730,7 +806,7 @@ async function submitGameScore() {{
   }} else {{
     try {{
       const now        = F.serverTimestamp();
-      const sessionRef = F.doc(F.collection(db, 'game_sessions'));
+      const sessionRef = F.doc(F.collection(db, COL.sessions));
       const batch      = F.writeBatch(db);
       // A new personal best is copied onto the profile, which is what the
       // leaderboard reads (firestore.rules checks it matches this game)
@@ -752,7 +828,7 @@ async function submitGameScore() {{
         played_at:     now,
       }});
       guessPayload.forEach((g, i) => {{
-        batch.set(F.doc(db, 'game_guesses', `${{sessionRef.id}}_${{i}}`), {{ session_id: sessionRef.id, ...g }});
+        batch.set(F.doc(db, COL.guesses, `${{sessionRef.id}}_${{i}}`), {{ session_id: sessionRef.id, ...g }});
       }});
       await batch.commit();
       currentProfile.game_count      = gameCount + 1;
@@ -777,7 +853,7 @@ async function submitGameScore() {{
   let rankText = '—';
   try {{
     const ago90 = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
-    const snap  = await F.getDocs(F.query(F.collection(db, 'game_sessions'), F.where('played_at', '>=', ago90)));
+    const snap  = await F.getDocs(F.query(F.collection(db, COL.sessions), F.where('played_at', '>=', ago90)));
     rankText = `#${{snap.docs.filter(d => d.data().total_score > totalScore).length + 1}}`;
   }} catch (err) {{
     console.error('Rank lookup failed:', err);
@@ -1018,8 +1094,9 @@ async function fetchPracticeRank(myScore) {{
     if practice:
         js_kickoff = """
 // ── Kick off ──────────────────────────────────────────────
+// Instructions card first; "Ready to practice?" starts the game
 prepareNextGame();
-startGame();
+showScreen('screen-start');
 """
     else:
         js_kickoff = """
@@ -1207,7 +1284,7 @@ h1 span {{ color: var(--pct-teal); }}
 .timer-bar-fill {{ height: 100%; background: var(--timer-red); transition: width .95s linear; }}
 .timer-num {{
   font-size: 20px; font-weight: 800; color: var(--timer-red);
-  font-variant-numeric: tabular-nums; min-width: 32px; text-align: right;
+  font-variant-numeric: tabular-nums; min-width: 48px; text-align: right;
 }}
 .photo-frame {{
   flex: 1; min-height: 0; position: relative;
@@ -1436,7 +1513,7 @@ h1 span {{ color: var(--pct-teal); }}
 <div id="screen-guess" class="screen">
   <div class="topbar">
     <div class="progress-text">Photo <strong id="g-cur">1</strong> / <strong id="g-tot">10</strong></div>
-    <div class="timer-num" id="timer-num">60</div>
+    <div class="timer-num" id="timer-num">3:00</div>
   </div>
   <div class="timer-bar-track">
     <div class="timer-bar-fill" id="timer-fill" style="width:100%"></div>
@@ -1563,7 +1640,7 @@ h1 span {{ color: var(--pct-teal); }}
 const photos = {game_data};
 {js_firebase}
 // ── Config ────────────────────────────────────────────────
-const TIMER_SEC   = 60;
+const TIMER_SEC   = 180;  // 3 minutes per photo
 const FULL_CREDIT = 3;
 const GAME_SIZE   = 10;
 const MAX_TOTAL   = 2655.8;
@@ -1677,7 +1754,8 @@ function startTimer() {{
 
 function renderTimer() {{
   document.getElementById('timer-fill').style.width = (timeLeft / TIMER_SEC * 100) + '%';
-  document.getElementById('timer-num').textContent  = timeLeft;
+  document.getElementById('timer-num').textContent  =
+    `${{Math.floor(timeLeft / 60)}}:${{String(timeLeft % 60).padStart(2, '0')}}`;
 }}
 
 // ── Game flow ─────────────────────────────────────────────
@@ -2054,12 +2132,16 @@ document.getElementById('nav-interrupt-ok').addEventListener('click', function()
 # ── Write both files ──────────────────────────────────────────────────────────
 os.makedirs(os.path.join(HERE, 'practice'), exist_ok=True)
 os.makedirs(os.path.join(HERE, 'scored'),   exist_ok=True)
+os.makedirs(os.path.join(HERE, 'guest'),    exist_ok=True)
 
 practice_out = os.path.join(HERE, 'practice', 'index.html')
 scored_out   = os.path.join(HERE, 'scored',   'index.html')
+guest_out    = os.path.join(HERE, 'guest',    'index.html')
 
 with open(practice_out, 'w') as f: f.write(make_html('practice'))
 with open(scored_out,   'w') as f: f.write(make_html('scored'))
+with open(guest_out,    'w') as f: f.write(make_html('guest'))
 
 print(f'Built {practice_out}  ({len(v1_photos)} v1-demo photos)')
 print(f'Built {scored_out}    ({len(v2_photos)} v2-scored photos)')
+print(f'Built {guest_out}     ({len(v2_photos)} v2-scored photos)')

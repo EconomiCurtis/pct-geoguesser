@@ -397,9 +397,12 @@ async function fetchBoard(board, view) {
 }
 
 function render(rows) {
-  document.getElementById('window-note').textContent =
-    (currentView === 'rolling' ? 'Highest score per player in the last 90 days' : 'Highest score per player, all time')
-    + (currentBoard === 'all' ? ' · both guests and signed-in' : ' · max 2655.8 pts');
+  const base = currentView === 'rolling'
+    ? 'Highest score per player in the last 90 days'
+    : 'Highest score per player, all time';
+  document.getElementById('window-note').textContent = currentBoard === 'all'
+    ? `${base} · both guests and signed-in · max 2655.8 pts`
+    : `Logged in users only · ${base} · max 2655.8 pts`;
   if (rows.length === 0) {
     document.getElementById('empty-link').href = currentBoard === 'all' ? '/guest/' : '/game/';
     showState('state-empty');

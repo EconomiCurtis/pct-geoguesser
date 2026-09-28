@@ -236,7 +236,7 @@ def make_html(mode):
     # Firestore collections + per-tier names (scored and guest only)
     if guest:
         TIER = {'profiles': 'guest_profiles', 'sessions': 'guest_sessions', 'guesses': 'guest_guesses'}
-        lb_url, uid_key, app_name_arg = '/leaderboard/?board=guests', 'pct_guest_uid', ", 'guest'"
+        lb_url, uid_key, app_name_arg = '/leaderboard/', 'pct_guest_uid', ", 'guest'"
     else:
         TIER = {'profiles': 'profiles', 'sessions': 'game_sessions', 'guesses': 'game_guesses'}
         lb_url, uid_key, app_name_arg = '/leaderboard/', 'pct_uid', ''

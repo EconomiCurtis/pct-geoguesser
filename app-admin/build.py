@@ -7,11 +7,12 @@
 # gates the UI — firestore.rules is what restricts writes to the admin.
 #
 # Four tab views:
-#   - Recent Games   : last 100 scored games with player names + scores
-#   - Photo Stats    : every photo merged with stats computed from all
-#                      game_guesses, sortable; each thumbnail opens a lightbox
-#                      with a "map" deep link
-#   - Edit Database  : search players, rename, delete games or full players
+#   - Recent Games   : last 100 games, official and guest, with a Type column
+#   - Photo Stats    : every photo merged with stats computed from the guesses
+#                      (All / Official / Guests buttons pick which), sortable;
+#                      each thumbnail opens a lightbox with a "map" deep link
+#   - Edit Database  : search players (Official or Guests), rename, delete
+#                      games or full players
 #   - Site Settings  : admin toggles (e.g. show/hide the 90-day leaderboard tab)
 #
 # Deletes are batched Firestore deletes (sessions + their guesses, and the
@@ -126,6 +127,9 @@ section {{ margin-bottom: 48px; }}
 }}
 .chip-label {{ font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }}
 .chip-val   {{ font-size: 26px; font-weight: 700; color: var(--teal); font-variant-numeric: tabular-nums; line-height: 1.2; }}
+.chip-sub   {{ font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }}
+.tier-badge {{ font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }}
+.tier-badge.official {{ color: var(--teal); border-color: var(--teal); }}
 
 /* ── Tab bar ──────────────────────────────────────────── */
 .tab-bar {{
@@ -322,8 +326,8 @@ td.val-muted {{ color: var(--muted); }}
 
   <!-- ── Overview chips ─────────────────────────────── -->
   <div class="overview-chips">
-    <div class="chip"><div class="chip-label">Total Games</div><div class="chip-val" id="chip-games">—</div></div>
-    <div class="chip"><div class="chip-label">Unique Players</div><div class="chip-val" id="chip-players">—</div></div>
+    <div class="chip"><div class="chip-label">Total Games</div><div class="chip-val" id="chip-games">—</div><div class="chip-sub" id="chip-games-sub"></div></div>
+    <div class="chip"><div class="chip-label">Unique Players</div><div class="chip-val" id="chip-players">—</div><div class="chip-sub" id="chip-players-sub"></div></div>
     <div class="chip"><div class="chip-label">Photos w/ Data</div><div class="chip-val" id="chip-photos">—</div></div>
   </div>
 
@@ -341,7 +345,7 @@ td.val-muted {{ color: var(--muted); }}
       <table>
         <thead>
           <tr>
-            <th>Trail Name</th><th>PCT Year</th><th>Score</th><th>Perfects</th><th>Played</th>
+            <th>Trail Name</th><th>Type</th><th>PCT Year</th><th>Score</th><th>Perfects</th><th>Played</th>
           </tr>
         </thead>
         <tbody id="games-tbody"></tbody>
@@ -362,6 +366,10 @@ td.val-muted {{ color: var(--muted); }}
       <input type="text" id="section-filter" placeholder="Filter by section…" oninput="renderStats()">
       <button class="sort-btn" id="filter-v1" onclick="toggleVersionFilter('v1-demo')">v1</button>
       <button class="sort-btn" id="filter-v2" onclick="toggleVersionFilter('v2-scored')">v2</button>
+      <span style="color:var(--muted);font-size:12px;margin-left:8px">Guesses from:</span>
+      <button class="sort-btn active" id="src-all"      onclick="setStatsSource('all')">All</button>
+      <button class="sort-btn"        id="src-official" onclick="setStatsSource('official')">Official</button>
+      <button class="sort-btn"        id="src-guests"   onclick="setStatsSource('guests')">Guests</button>
     </div>
     <div class="table-wrap">
       <table>
@@ -572,6 +580,8 @@ async function saveSetting(key, value) {{
 
 // ── Data loading ──────────────────────────────────────────
 let mergedPhotos = [], sortKey = 'mile', sortAsc = true, versionFilter = null;
+// Raw guesses per tier, and which ones the photo stats use ('all' | 'official' | 'guests')
+let guessesByTier = {{ official: [], guests: [] }}, statsSource = 'all';
 
 // Per-photo stats from raw guesses. Error = |guess − true mile| for
 // non-timed-out guesses; SD is the population SD; perfect = error ≤ 3 mi.
@@ -598,31 +608,52 @@ function computePhotoStats(guesses) {{
   return stats;
 }}
 
+// Shows "total" with an "official · guest" breakdown underneath
+function setChip(id, official, guests) {{
+  document.getElementById(id).textContent = (official + guests).toLocaleString();
+  document.getElementById(id + '-sub').textContent = `${{official}} official · ${{guests}} guest`;
+}}
+
 async function loadAdminData() {{
   const {{ db, F }} = fb;
-  // Photo stats use every guess, guests included; games/players are official
-  const [sessionsSnap, profilesSnap, guessesSnap, guestGuessesSnap] = await Promise.all([
-    F.getDocs(F.collection(db, 'game_sessions')),
-    F.getDocs(F.collection(db, 'profiles')),
-    F.getDocs(F.collection(db, 'game_guesses')),
-    F.getDocs(F.collection(db, 'guest_guesses')),
-  ]);
+  // Official and guest data: every collection of both tiers
+  const tiers = Object.entries(TIERS);
+  const snaps = await Promise.all(tiers.map(([, T]) => Promise.all([
+    F.getDocs(F.collection(db, T.sessions)),
+    F.getDocs(F.collection(db, T.profiles)),
+    F.getDocs(F.collection(db, T.guesses)),
+  ])));
 
-  const profiles = {{}};
-  profilesSnap.forEach(d => {{ profiles[d.id] = {{ id: d.id, ...d.data() }}; }});
+  let games = [];
+  const counts = {{}};
+  tiers.forEach(([tier], i) => {{
+    const [sessionsSnap, profilesSnap, guessesSnap] = snaps[i];
+    const profiles = {{}};
+    profilesSnap.forEach(d => {{ profiles[d.id] = {{ id: d.id, ...d.data() }}; }});
+    games = games.concat(sessionsSnap.docs.map(d => {{
+      const g = d.data();
+      return {{ ...g, tier, played_at: g.played_at.toDate(), profiles: profiles[g.user_id] }};
+    }}));
+    guessesByTier[tier] = guessesSnap.docs.map(d => d.data());
+    counts[tier] = {{ games: sessionsSnap.size, players: profilesSnap.size }};
+  }});
 
-  const games = sessionsSnap.docs
-    .map(d => {{ const g = d.data(); return {{ ...g, played_at: g.played_at.toDate(), profiles: profiles[g.user_id] }}; }})
-    .sort((a, b) => b.played_at - a.played_at)
-    .slice(0, 100);
+  setChip('chip-games',   counts.official.games,   counts.guests.games);
+  setChip('chip-players', counts.official.players, counts.guests.players);
+  renderGames(games.sort((a, b) => b.played_at - a.played_at).slice(0, 100));
+  buildPhotoStats();
 
-  document.getElementById('chip-games').textContent   = sessionsSnap.size.toLocaleString();
-  document.getElementById('chip-players').textContent = profilesSnap.size.toLocaleString();
-  renderGames(games);
+  document.getElementById('loading-view').style.display = 'none';
+  document.getElementById('main-view').style.display    = 'block';
+}}
 
-  const statsMap = computePhotoStats([...guessesSnap.docs, ...guestGuessesSnap.docs].map(d => d.data()));
+// Photo stats from the guesses picked with the All / Official / Guests buttons
+function buildPhotoStats() {{
+  const guesses = statsSource === 'all'
+    ? [...guessesByTier.official, ...guessesByTier.guests]
+    : guessesByTier[statsSource];
+  const statsMap = computePhotoStats(guesses);
   document.getElementById('chip-photos').textContent = Object.keys(statsMap).length;
-
   mergedPhotos = allPhotos.map(p => ({{
     ...p,
     appearances:   statsMap[p.id]?.appearances  ?? 0,
@@ -632,19 +663,23 @@ async function loadAdminData() {{
     perfect_count: statsMap[p.id]?.perfect_count ?? 0,
   }}));
   renderStats();
+}}
 
-  document.getElementById('loading-view').style.display = 'none';
-  document.getElementById('main-view').style.display    = 'block';
+function setStatsSource(src) {{
+  statsSource = src;
+  ['all', 'official', 'guests'].forEach(s =>
+    document.getElementById('src-' + s).classList.toggle('active', s === src));
+  buildPhotoStats();
 }}
 
 async function refreshChips() {{
   const {{ db, F }} = fb;
-  const [p, g] = await Promise.all([
-    F.getCountFromServer(F.collection(db, 'profiles')),
-    F.getCountFromServer(F.collection(db, 'game_sessions')),
+  const count = coll => F.getCountFromServer(F.collection(db, coll)).then(r => r.data().count);
+  const [op, og, gp, gg] = await Promise.all([
+    count('profiles'), count('game_sessions'), count('guest_profiles'), count('guest_sessions'),
   ]);
-  document.getElementById('chip-games').textContent   = g.data().count.toLocaleString();
-  document.getElementById('chip-players').textContent = p.data().count.toLocaleString();
+  setChip('chip-games', og, gg);
+  setChip('chip-players', op, gp);
 }}
 
 async function refreshAll() {{
@@ -662,7 +697,7 @@ function renderGames(games) {{
   const tbody = document.getElementById('games-tbody');
   tbody.innerHTML = '';
   if (!games.length) {{
-    tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:20px">No games yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:20px">No games yet.</td></tr>';
     return;
   }}
   for (const g of games) {{
@@ -670,14 +705,17 @@ function renderGames(games) {{
     const date = new Date(g.played_at);
     const dateStr = date.toLocaleDateString('en-US', {{ month:'short', day:'numeric', year:'numeric' }})
                   + ' ' + date.toLocaleTimeString('en-US', {{ hour:'2-digit', minute:'2-digit' }});
-    const hikerUrl  = p?.id ? `/hiker/?id=${{encodeURIComponent(p.id)}}` : null;
+    const guest     = g.tier === 'guests';
+    // Guests have no /hiker/ page
+    const hikerUrl  = p?.id && !guest ? `/hiker/?id=${{encodeURIComponent(p.id)}}` : null;
     const nameHtml  = p?.trail_name
       ? (hikerUrl ? `<a href="${{hikerUrl}}" style="color:var(--teal);font-weight:600;text-decoration:none" target="_blank">${{esc(p.trail_name)}}</a>`
-                  : `<span style="color:var(--teal);font-weight:600">${{esc(p.trail_name)}}</span>`)
+                  : `<span style="color:var(--text);font-weight:600">${{esc(p.trail_name)}}</span>`)
       : '—';
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${{nameHtml}}</td>
+      <td><span class="tier-badge${{guest ? '' : ' official'}}">${{guest ? 'Guest' : 'Official'}}</span></td>
       <td style="color:var(--muted)">${{esc(p?.pct_year ?? '—')}}</td>
       <td style="font-variant-numeric:tabular-nums;font-weight:600">${{Number(g.total_score).toFixed(1)}}</td>
       <td style="color:var(--muted)">${{g.perfect_count}} / ${{g.photo_count}}</td>
@@ -774,8 +812,10 @@ function closeConfirm() {{
 }}
 
 function execConfirm() {{
+  // Grab the action first: closeConfirm() clears pendingConfirmFn
+  const fn = pendingConfirmFn;
   closeConfirm();
-  if (pendingConfirmFn) pendingConfirmFn();
+  if (fn) fn();
 }}
 
 // Close modal on overlay click

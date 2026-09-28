@@ -8,9 +8,13 @@
 #   best_score, best_perfects), `game_sessions` (90-day tab only) and
 #   `site_settings/{key}` ({value}).
 #
-# Two boards, as tabs: Official (Google sign-in; profiles / game_sessions) and
-#   Guests (anonymous sign-in on /guest/; guest_profiles / guest_sessions).
-#   ?board=guests opens the Guests tab (the guest game links there).
+# Two boards, as tabs:
+#   All Scores (default) — official and guest players combined, top 100.
+#   Official (?board=official) — Google sign-in players only.
+# Official players live in profiles / game_sessions, guests (anonymous
+#   sign-in on /guest/) in guest_profiles / guest_sessions. Guest names are
+#   plain text (no /hiker/ page); official names link to their hiker page.
+#   The old ?board=guests link opens All Scores.
 #
 # Default view: All-Time — one query: profiles ordered by best_score.
 # The last result is cached in localStorage and drawn instantly on the next
@@ -19,7 +23,7 @@
 #   'true' (applies to both boards). Otherwise only All-Time is shown.
 #
 # Row highlighting: the signed-in player's uid (localStorage `pct_uid`, or
-#   `pct_guest_uid` on the Guests board, set by the game pages) matches the
+#   `pct_guest_uid` for guest rows, set by the game pages) matches the
 #   profile id; that row gets .lb-row-me.
 #
 # To rebuild:
@@ -264,8 +268,8 @@ body {{
   </div>
 
   <div class="tab-bar" id="tier-bar">
+    <button class="tab" id="tab-all">All Scores</button>
     <button class="tab" id="tab-official">Official</button>
-    <button class="tab" id="tab-guests">Guests</button>
   </div>
 
   <!-- Hidden until the 90-day setting is confirmed enabled -->
@@ -316,10 +320,13 @@ const TIERS = {{
   guests:   {{ profiles: 'guest_profiles', sessions: 'guest_sessions', uidKey: 'pct_guest_uid', app: 'guest',     play: '/guest/' }},
 }};
 
-// Current board ('official' | 'guests') and view ('alltime' | 'rolling')
-let currentTier = new URLSearchParams(location.search).get('board') === 'guests' ? 'guests' : 'official';
+// Which tiers each board combines
+const BOARDS = {{ all: ['official', 'guests'], official: ['official'] }};
+
+// Current board ('all' | 'official') and view ('alltime' | 'rolling')
+let currentBoard = new URLSearchParams(location.search).get('board') === 'official' ? 'official' : 'all';
 let currentView = 'alltime';
-// Signed-in player's uid per board (for row highlighting); null if unknown
+// Signed-in player's uid per tier (for row highlighting); null if unknown
 const myUid = {{ official: null, guests: null }};
 
 // trail_name / pct_year are player-entered, so escape before innerHTML
@@ -368,7 +375,7 @@ async function fetchAllTime(tier) {{
     limit:   100,
   }} }});
   return res.filter(r => r.document).map(r => docData(r.document)).map(p => ({{
-    user_id: p.id, name: p.trail_name, year: p.pct_year, score: p.best_score, perfects: p.best_perfects ?? 0,
+    tier, user_id: p.id, name: p.trail_name, year: p.pct_year, score: p.best_score, perfects: p.best_perfects ?? 0,
   }}));
 }}
 
@@ -398,7 +405,7 @@ async function fetchRolling(tier) {{
   const profiles = {{}};
   got.filter(r => r.found).forEach(r => {{ const p = docData(r.found); profiles[p.id] = p; }});
   return best.filter(s => profiles[s.user_id]).map(s => ({{
-    user_id: s.user_id, name: profiles[s.user_id].trail_name, year: profiles[s.user_id].pct_year,
+    tier, user_id: s.user_id, name: profiles[s.user_id].trail_name, year: profiles[s.user_id].pct_year,
     score: s.total_score, perfects: s.perfect_count ?? 0,
   }}));
 }}
@@ -408,13 +415,19 @@ function showState(id) {{
     .forEach(s => document.getElementById(s).hidden = (s !== id));
 }}
 
+// One board = its tiers' lists merged, highest first, top 100 listed players
+async function fetchBoard(board, view) {{
+  const lists = await Promise.all(BOARDS[board].map(tier =>
+    view === 'rolling' ? fetchRolling(tier) : fetchAllTime(tier)));
+  return listed(lists.flat()).sort((a, b) => b.score - a.score).slice(0, 100);
+}}
+
 function render(rows) {{
-  const guests = currentTier === 'guests';
   document.getElementById('window-note').textContent =
     (currentView === 'rolling' ? 'Highest score per player in the last 90 days' : 'Highest score per player, all time')
-    + (guests ? ' · unofficial, played without signing in' : ' · max 2655.8 pts');
+    + (currentBoard === 'all' ? ' · both guests and signed-in' : ' · max 2655.8 pts');
   if (rows.length === 0) {{
-    document.getElementById('empty-link').href = TIERS[currentTier].play;
+    document.getElementById('empty-link').href = currentBoard === 'all' ? '/guest/' : '/game/';
     showState('state-empty');
     return;
   }}
@@ -438,11 +451,13 @@ function render(rows) {{
       : '';
 
     const tr = document.createElement('tr');
-    tr.dataset.uid = row.user_id;
+    const guest = row.tier === 'guests';
+    tr.dataset.uid  = row.user_id;
+    tr.dataset.tier = row.tier || 'official';
     tr.innerHTML = `
       <td class="rank-cell">${{rankHtml}}</td>
       <td class="name-cell">
-        ${{guests ? `<span class="guest-name">${{name}}</span>` : `<a href="/hiker/?id=${{profileId}}" class="hiker-link">${{name}}</a>`}}
+        ${{guest ? `<span class="guest-name">${{name}}</span>` : `<a href="/hiker/?id=${{profileId}}" class="hiker-link">${{name}}</a>`}}
         ${{yearHtml}}
       </td>
       <td class="score-cell">${{score}} pts</td>
@@ -456,10 +471,8 @@ function render(rows) {{
 
 // Highlight the current player's own row
 function highlightMe() {{
-  const uid = myUid[currentTier];
-  if (!uid) return;
   document.querySelectorAll('#lb-body tr').forEach(tr =>
-    tr.classList.toggle('lb-row-me', tr.dataset.uid === uid));
+    tr.classList.toggle('lb-row-me', !!myUid[tr.dataset.tier] && tr.dataset.uid === myUid[tr.dataset.tier]));
 }}
 
 // Only players with both a trail name and a PCT year are listed (the rules
@@ -468,14 +481,14 @@ const listed = rows => rows.filter(r => (r.name || '').trim() && (r.year || '').
 
 // Draw the last copy this browser saw straight away, then swap in fresh data
 async function loadScores() {{
-  const tier = currentTier, view = currentView;
-  const isCurrent = () => tier === currentTier && view === currentView;
-  const cacheKey = `pct_lb_${{tier}}_${{view}}`;
+  const board = currentBoard, view = currentView;
+  const isCurrent = () => board === currentBoard && view === currentView;
+  const cacheKey = `pct_lb_${{board}}_${{view}}`;
   const cached = cacheGet(cacheKey);
   if (cached) render(cached);
   else showState('state-loading');
   try {{
-    const rows = listed(await (view === 'rolling' ? fetchRolling(tier) : fetchAllTime(tier)));
+    const rows = await fetchBoard(board, view);
     cacheSet(cacheKey, rows);
     if (isCurrent()) render(rows);
   }} catch (err) {{
@@ -536,12 +549,12 @@ async function findMe() {{
   highlightMe();
 }}
 
-function switchTier(tier) {{
-  currentTier = tier;
-  document.getElementById('tab-official').classList.toggle('tab-active', tier === 'official');
-  document.getElementById('tab-guests').classList.toggle('tab-active', tier === 'guests');
-  // Keep the address shareable (?board=guests)
-  try {{ history.replaceState(null, '', tier === 'guests' ? '?board=guests' : location.pathname); }} catch (_) {{}}
+function switchBoard(board) {{
+  currentBoard = board;
+  document.getElementById('tab-all').classList.toggle('tab-active', board === 'all');
+  document.getElementById('tab-official').classList.toggle('tab-active', board === 'official');
+  // Keep the address shareable (?board=official)
+  try {{ history.replaceState(null, '', board === 'official' ? '?board=official' : location.pathname); }} catch (_) {{}}
   loadScores();
 }}
 
@@ -552,13 +565,13 @@ function switchView(view) {{
   loadScores();
 }}
 
-document.getElementById('tab-official').addEventListener('click', () => switchTier('official'));
-document.getElementById('tab-guests').addEventListener('click', () => switchTier('guests'));
+document.getElementById('tab-all').addEventListener('click', () => switchBoard('all'));
+document.getElementById('tab-official').addEventListener('click', () => switchBoard('official'));
 document.getElementById('tab-alltime').addEventListener('click', () => switchView('alltime'));
 document.getElementById('tab-rolling').addEventListener('click', () => switchView('rolling'));
 document.getElementById('tab-alltime').classList.add('tab-active');
 applyRollingSetting(cacheGet('pct_lb_rolling_on') === true);
-switchTier(currentTier);
+switchBoard(currentBoard);
 loadRollingSetting();
 findMe();
 </script>
